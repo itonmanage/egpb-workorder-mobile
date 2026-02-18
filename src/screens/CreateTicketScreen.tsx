@@ -1,15 +1,24 @@
 /**
  * Create Ticket Screen
+ * - Receives ticketType from navigation params
+ * - Supports image attachment via camera/gallery
+ * - Scrollable dropdown pickers
  */
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import {
+    View, Text, StyleSheet, ScrollView, TextInput,
+    TouchableOpacity, Alert, ActivityIndicator, Image,
+    FlatList, Platform,
+} from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
+import * as ImagePicker from 'expo-image-picker';
 import { apiService } from '../services/api';
 import { TicketType } from '../types';
 import { DEPARTMENTS, getDamageTypes, getAreas } from '../constants';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../constants/theme';
 
+// Scrollable Dropdown Picker component
 function DropdownPicker({ label, required, value, placeholder, options, visible, onToggle, onSelect }: {
     label: string; required?: boolean; value: string; placeholder: string;
     options: readonly string[]; visible: boolean;
@@ -18,12 +27,12 @@ function DropdownPicker({ label, required, value, placeholder, options, visible,
     return (
         <View style={styles.field}>
             <Text style={styles.label}>{label} {required && <Text style={styles.req}>*</Text>}</Text>
-            <TouchableOpacity style={styles.picker} onPress={onToggle}>
+            <TouchableOpacity style={[styles.picker, visible && styles.pickerOpen]} onPress={onToggle}>
                 <Text style={[styles.pickerText, !value && { color: Colors.textTertiary }]}>{value || placeholder}</Text>
                 <Ionicons name={visible ? 'chevron-up' : 'chevron-down'} size={18} color={Colors.textTertiary} />
             </TouchableOpacity>
             {visible && (
-                <View style={styles.optionsList}>
+                <ScrollView style={styles.optionsList} nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
                     {options.map((opt) => (
                         <TouchableOpacity key={opt} style={[styles.optionItem, value === opt && styles.optionActive]}
                             onPress={() => onSelect(opt)}>
@@ -31,10 +40,16 @@ function DropdownPicker({ label, required, value, placeholder, options, visible,
                             {value === opt && <Ionicons name="checkmark" size={16} color={Colors.primary} />}
                         </TouchableOpacity>
                     ))}
-                </View>
+                </ScrollView>
             )}
         </View>
     );
+}
+
+// Image attachment item type
+interface ImageAttachment {
+    uri: string;
+    fileName?: string;
 }
 
 export default function CreateTicketScreen({ route }: any) {
@@ -45,10 +60,81 @@ export default function CreateTicketScreen({ route }: any) {
     const [department, setDepartment] = useState('');
     const [area, setArea] = useState('');
     const [damageType, setDamageType] = useState('');
+    const [images, setImages] = useState<ImageAttachment[]>([]);
     const [loading, setLoading] = useState(false);
     const [showDept, setShowDept] = useState(false);
     const [showArea, setShowArea] = useState(false);
     const [showDamage, setShowDamage] = useState(false);
+
+    // Close all dropdowns
+    const closeAllDropdowns = () => {
+        setShowDept(false);
+        setShowArea(false);
+        setShowDamage(false);
+    };
+
+    // Image picker - from gallery
+    const pickFromGallery = async () => {
+        const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Please allow access to your photo library to attach images.');
+            return;
+        }
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ['images'],
+            allowsMultipleSelection: true,
+            quality: 0.7,
+            selectionLimit: 5 - images.length,
+        });
+        if (!result.canceled && result.assets) {
+            const newImages = result.assets.map(asset => ({
+                uri: asset.uri,
+                fileName: asset.fileName || `image_${Date.now()}.jpg`,
+            }));
+            setImages(prev => [...prev, ...newImages].slice(0, 5));
+        }
+    };
+
+    // Image picker - from camera
+    const pickFromCamera = async () => {
+        const { status } = await ImagePicker.requestCameraPermissionsAsync();
+        if (status !== 'granted') {
+            Alert.alert('Permission Required', 'Please allow camera access to take photos.');
+            return;
+        }
+        const result = await ImagePicker.launchCameraAsync({
+            quality: 0.7,
+        });
+        if (!result.canceled && result.assets[0]) {
+            const asset = result.assets[0];
+            setImages(prev => [...prev, {
+                uri: asset.uri,
+                fileName: asset.fileName || `photo_${Date.now()}.jpg`,
+            }].slice(0, 5));
+        }
+    };
+
+    // Show image source picker
+    const handleAddImage = () => {
+        if (images.length >= 5) {
+            Alert.alert('Limit Reached', 'Maximum 5 images allowed.');
+            return;
+        }
+        if (Platform.OS === 'web') {
+            pickFromGallery();
+            return;
+        }
+        Alert.alert('Attach Image', 'Choose a source', [
+            { text: 'Camera', onPress: pickFromCamera },
+            { text: 'Photo Library', onPress: pickFromGallery },
+            { text: 'Cancel', style: 'cancel' },
+        ]);
+    };
+
+    // Remove image
+    const removeImage = (index: number) => {
+        setImages(prev => prev.filter((_, i) => i !== index));
+    };
 
     const handleSubmit = async () => {
         if (!title.trim()) return Alert.alert('Validation', 'Please enter a location/title');
@@ -57,7 +143,15 @@ export default function CreateTicketScreen({ route }: any) {
         setLoading(true);
         try {
             const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
-            const result = await api.create({ title: title.trim(), description: description.trim(), department, area, location: area, typeOfDamage: damageType });
+            const result = await api.create({
+                title: title.trim(),
+                description: description.trim(),
+                department,
+                area,
+                location: area,
+                typeOfDamage: damageType,
+                // images would be sent via FormData in real API mode
+            });
             if (result.success) {
                 Alert.alert('Success ✅', 'Ticket created', [{ text: 'OK', onPress: () => navigation.goBack() }]);
             } else { Alert.alert('Error', result.error || 'Failed'); }
@@ -65,31 +159,99 @@ export default function CreateTicketScreen({ route }: any) {
         finally { setLoading(false); }
     };
 
+    const handleReset = () => {
+        setTitle('');
+        setDescription('');
+        setDepartment('');
+        setArea('');
+        setDamageType('');
+        setImages([]);
+        closeAllDropdowns();
+    };
+
     const typeLabel = ticketType === 'it' ? 'IT' : 'Engineer';
     const typeIcon = ticketType === 'it' ? 'desktop' : 'construct';
 
     return (
-        <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled" nestedScrollEnabled={true}>
             {/* Type indicator banner */}
             <View style={styles.typeBanner}>
                 <Ionicons name={typeIcon as any} size={20} color={Colors.primary} />
                 <Text style={styles.typeBannerText}>Creating {typeLabel} Ticket</Text>
             </View>
             <View style={styles.formCard}>
+                {/* Title */}
                 <View style={styles.field}>
                     <Text style={styles.label}>Location / Title <Text style={styles.req}>*</Text></Text>
                     <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="e.g., Room 301 - WiFi Issue" placeholderTextColor={Colors.textTertiary} />
                 </View>
+
+                {/* Description */}
                 <View style={styles.field}>
                     <Text style={styles.label}>Description <Text style={styles.req}>*</Text></Text>
-                    <TextInput style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]} value={description} onChangeText={setDescription} placeholder="Describe the issue..." placeholderTextColor={Colors.textTertiary} multiline numberOfLines={4} />
+                    <TextInput
+                        style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]}
+                        value={description} onChangeText={setDescription}
+                        placeholder="Describe the issue..."
+                        placeholderTextColor={Colors.textTertiary}
+                        multiline numberOfLines={4}
+                    />
                     <Text style={styles.charCount}>{description.length}/2000</Text>
                 </View>
-                <DropdownPicker label="Department" value={department} placeholder="Select department" options={DEPARTMENTS} visible={showDept} onToggle={() => setShowDept(!showDept)} onSelect={(v) => { setDepartment(v); setShowDept(false); }} />
-                <DropdownPicker label="Area" value={area} placeholder="Select area" options={getAreas(ticketType)} visible={showArea} onToggle={() => setShowArea(!showArea)} onSelect={(v) => { setArea(v); setShowArea(false); }} />
-                <DropdownPicker label="Type of Damage" required value={damageType} placeholder="Select damage type" options={getDamageTypes(ticketType)} visible={showDamage} onToggle={() => setShowDamage(!showDamage)} onSelect={(v) => { setDamageType(v); setShowDamage(false); }} />
+
+                {/* Dropdowns */}
+                <DropdownPicker
+                    label="Department" value={department} placeholder="Select department"
+                    options={DEPARTMENTS} visible={showDept}
+                    onToggle={() => { closeAllDropdowns(); setShowDept(!showDept); }}
+                    onSelect={(v) => { setDepartment(v); setShowDept(false); }}
+                />
+                <DropdownPicker
+                    label="Area" value={area} placeholder="Select area"
+                    options={getAreas(ticketType)} visible={showArea}
+                    onToggle={() => { closeAllDropdowns(); setShowArea(!showArea); }}
+                    onSelect={(v) => { setArea(v); setShowArea(false); }}
+                />
+                <DropdownPicker
+                    label="Type of Damage" required value={damageType} placeholder="Select damage type"
+                    options={getDamageTypes(ticketType)} visible={showDamage}
+                    onToggle={() => { closeAllDropdowns(); setShowDamage(!showDamage); }}
+                    onSelect={(v) => { setDamageType(v); setShowDamage(false); }}
+                />
+
+                {/* Image Attachment */}
+                <View style={styles.field}>
+                    <Text style={styles.label}>Attach Images</Text>
+                    <Text style={styles.imageHint}>{images.length}/5 images • JPG, PNG</Text>
+
+                    {/* Image previews */}
+                    {images.length > 0 && (
+                        <View style={styles.imageGrid}>
+                            {images.map((img, index) => (
+                                <View key={index} style={styles.imageThumbWrap}>
+                                    <Image source={{ uri: img.uri }} style={styles.imageThumb} />
+                                    <TouchableOpacity style={styles.removeImageBtn} onPress={() => removeImage(index)}>
+                                        <Ionicons name="close-circle" size={22} color={Colors.error} />
+                                    </TouchableOpacity>
+                                </View>
+                            ))}
+                        </View>
+                    )}
+
+                    {/* Add image button */}
+                    {images.length < 5 && (
+                        <TouchableOpacity style={styles.addImageBtn} onPress={handleAddImage} activeOpacity={0.7}>
+                            <Ionicons name="camera-outline" size={24} color={Colors.primary} />
+                            <Text style={styles.addImageText}>
+                                {images.length === 0 ? 'Tap to attach images' : 'Add more images'}
+                            </Text>
+                        </TouchableOpacity>
+                    )}
+                </View>
+
+                {/* Actions */}
                 <View style={styles.actions}>
-                    <TouchableOpacity style={styles.resetBtn} onPress={() => { setTitle(''); setDescription(''); setDepartment(''); setArea(''); setDamageType(''); }}>
+                    <TouchableOpacity style={styles.resetBtn} onPress={handleReset}>
                         <Ionicons name="refresh-outline" size={18} color={Colors.textSecondary} />
                         <Text style={{ fontSize: FontSize.sm, color: Colors.textSecondary }}>Reset</Text>
                     </TouchableOpacity>
@@ -108,21 +270,79 @@ export default function CreateTicketScreen({ route }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },
-    typeBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginHorizontal: Spacing.lg, marginTop: Spacing.lg, marginBottom: Spacing.sm, backgroundColor: Colors.primaryBg, borderRadius: BorderRadius.lg, paddingVertical: Spacing.md, borderWidth: 1, borderColor: Colors.primaryBorder },
+    typeBanner: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
+        marginHorizontal: Spacing.lg, marginTop: Spacing.lg, marginBottom: Spacing.sm,
+        backgroundColor: Colors.primaryBg, borderRadius: BorderRadius.lg, paddingVertical: Spacing.md,
+        borderWidth: 1, borderColor: Colors.primaryBorder,
+    },
     typeBannerText: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.primary },
-    formCard: { backgroundColor: Colors.white, marginHorizontal: Spacing.lg, borderRadius: BorderRadius.xl, padding: Spacing.xl, borderWidth: 1, borderColor: Colors.primaryBorder, ...Shadow.sm },
+    formCard: {
+        backgroundColor: Colors.white, marginHorizontal: Spacing.lg, borderRadius: BorderRadius.xl,
+        padding: Spacing.xl, borderWidth: 1, borderColor: Colors.primaryBorder, ...Shadow.sm,
+    },
     field: { marginBottom: Spacing.xl },
     label: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text, marginBottom: Spacing.sm },
     req: { color: Colors.error },
-    input: { backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, fontSize: FontSize.sm, color: Colors.text },
+    input: {
+        backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+        borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+        fontSize: FontSize.sm, color: Colors.text,
+    },
     charCount: { fontSize: FontSize.xs, color: Colors.textTertiary, textAlign: 'right', marginTop: 4 },
-    picker: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md },
+    picker: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        backgroundColor: Colors.background, borderWidth: 1, borderColor: Colors.border,
+        borderRadius: BorderRadius.md, paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+    },
+    pickerOpen: {
+        borderColor: Colors.primary, borderWidth: 2,
+    },
     pickerText: { fontSize: FontSize.sm, color: Colors.text, flex: 1 },
-    optionsList: { backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border, borderRadius: BorderRadius.md, marginTop: Spacing.sm, maxHeight: 200 },
-    optionItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
+    optionsList: {
+        backgroundColor: Colors.white, borderWidth: 1, borderColor: Colors.border,
+        borderRadius: BorderRadius.md, marginTop: Spacing.sm, maxHeight: 180,
+    },
+    optionItem: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+        paddingHorizontal: Spacing.lg, paddingVertical: Spacing.md,
+        borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
+    },
     optionActive: { backgroundColor: Colors.primaryBg },
     optionText: { fontSize: FontSize.sm, color: Colors.text },
+    // Image attachment styles
+    imageHint: {
+        fontSize: FontSize.xs, color: Colors.textTertiary, marginBottom: Spacing.sm,
+    },
+    imageGrid: {
+        flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.sm, marginBottom: Spacing.md,
+    },
+    imageThumbWrap: {
+        position: 'relative', width: 80, height: 80,
+    },
+    imageThumb: {
+        width: 80, height: 80, borderRadius: BorderRadius.md, backgroundColor: Colors.background,
+    },
+    removeImageBtn: {
+        position: 'absolute', top: -6, right: -6, backgroundColor: Colors.white, borderRadius: 12,
+    },
+    addImageBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
+        borderWidth: 2, borderColor: Colors.primaryBorder, borderStyle: 'dashed',
+        borderRadius: BorderRadius.md, paddingVertical: Spacing.xl, backgroundColor: Colors.primaryBg,
+    },
+    addImageText: {
+        fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.primary,
+    },
+    // Action buttons
     actions: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm },
-    resetBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.md, paddingHorizontal: Spacing.xl, borderRadius: BorderRadius.md, borderWidth: 1, borderColor: Colors.border },
-    submitBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.md, borderRadius: BorderRadius.md, backgroundColor: Colors.primary, ...Shadow.md },
+    resetBtn: {
+        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+        paddingVertical: Spacing.md, paddingHorizontal: Spacing.xl, borderRadius: BorderRadius.md,
+        borderWidth: 1, borderColor: Colors.border,
+    },
+    submitBtn: {
+        flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6,
+        paddingVertical: Spacing.md, borderRadius: BorderRadius.md, backgroundColor: Colors.primary, ...Shadow.md,
+    },
 });
