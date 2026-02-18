@@ -24,13 +24,23 @@ export type RootStackParamList = {
 };
 
 export type MainTabParamList = {
-    Home: undefined;
+    Engineer: undefined;
+    IT: undefined;
     Create: undefined;
     Profile: undefined;
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
+
+// Wrapper components to pass ticketType prop
+function EngineerDashboard() {
+    return <HomeScreen ticketType="engineer" />;
+}
+
+function ITDashboard() {
+    return <HomeScreen ticketType="it" />;
+}
 
 function MainTabs() {
     return (
@@ -61,13 +71,24 @@ function MainTabs() {
             }}
         >
             <Tab.Screen
-                name="Home"
-                component={HomeScreen}
+                name="Engineer"
+                component={EngineerDashboard}
                 options={{
                     headerShown: false,
-                    tabBarLabel: 'Dashboard',
+                    tabBarLabel: 'Engineer',
                     tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="grid" size={size} color={color} />
+                        <Ionicons name="construct" size={size} color={color} />
+                    ),
+                }}
+            />
+            <Tab.Screen
+                name="IT"
+                component={ITDashboard}
+                options={{
+                    headerShown: false,
+                    tabBarLabel: 'IT',
+                    tabBarIcon: ({ color, size }) => (
+                        <Ionicons name="desktop" size={size} color={color} />
                     ),
                 }}
             />
@@ -122,7 +143,6 @@ export default function AppNavigator() {
                             headerTintColor: Colors.primary,
                             headerTitleStyle: { fontWeight: FontWeight.bold, color: Colors.text },
                             headerShadowVisible: false,
-                            headerBackTitleVisible: false,
                         }}
                     />
                 </>

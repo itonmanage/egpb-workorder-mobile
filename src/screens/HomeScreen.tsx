@@ -56,7 +56,11 @@ function StatCard({ title, count, icon, color, bgColor, isActive, onPress }: Sta
     );
 }
 
-export default function HomeScreen() {
+interface HomeScreenProps {
+    ticketType?: TicketType;
+}
+
+export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps) {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { user, isAdmin } = useAuth();
     const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -65,7 +69,6 @@ export default function HomeScreen() {
     const [refreshing, setRefreshing] = useState(false);
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('');
-    const [ticketType, setTicketType] = useState<TicketType>('it');
 
     const fetchData = useCallback(async () => {
         try {
@@ -141,23 +144,6 @@ export default function HomeScreen() {
                 )}
                 ListHeaderComponent={
                     <>
-                        {/* Type Switcher */}
-                        <View style={styles.typeSwitcher}>
-                            <TouchableOpacity
-                                style={[styles.typeButton, ticketType === 'it' && styles.typeButtonActive]}
-                                onPress={() => setTicketType('it')}
-                            >
-                                <Ionicons name="desktop-outline" size={16} color={ticketType === 'it' ? Colors.white : Colors.primary} />
-                                <Text style={[styles.typeButtonText, ticketType === 'it' && styles.typeButtonTextActive]}>IT Tickets</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={[styles.typeButton, ticketType === 'engineer' && styles.typeButtonActive]}
-                                onPress={() => setTicketType('engineer')}
-                            >
-                                <Ionicons name="construct-outline" size={16} color={ticketType === 'engineer' ? Colors.white : Colors.primary} />
-                                <Text style={[styles.typeButtonText, ticketType === 'engineer' && styles.typeButtonTextActive]}>Engineer</Text>
-                            </TouchableOpacity>
-                        </View>
 
                         {/* Stats Cards */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll} contentContainerStyle={styles.statsContainer}>
