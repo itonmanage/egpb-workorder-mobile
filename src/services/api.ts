@@ -13,10 +13,10 @@ import {
 } from './mockData';
 
 // Set this to your server URL when ready to connect
-const API_BASE_URL = 'http://10.70.0.34:3000/egpb/pyt/workorder';
+const API_BASE_URL = 'http://10.70.2.241:3000/egpb/pyt/workorder';
 
 // Toggle this to switch between mock and real API
-const USE_MOCK = true;
+const USE_MOCK = false;
 
 class ApiService {
     private token: string | null = null;
@@ -352,6 +352,13 @@ class ApiService {
             if (params?.from) searchParams.append('from', params.from);
             if (params?.to) searchParams.append('to', params.to);
             return this.request<SummaryStats>(`/stats/summary?${searchParams}`);
+        },
+        damageTypes: async (params: { month: number; year: number; type: string }) => {
+            const searchParams = new URLSearchParams();
+            searchParams.append('month', params.month.toString());
+            searchParams.append('year', params.year.toString());
+            searchParams.append('type', params.type);
+            return this.request<{ month: number; year: number; totalCount: number; typeBreakdown: { type: string; count: number; percentage: number }[] }>(`/stats/damage-types?${searchParams}`);
         },
     };
 }

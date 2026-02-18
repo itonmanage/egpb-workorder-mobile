@@ -1,6 +1,7 @@
 /**
  * Ticket Detail Screen
  * Full ticket information with admin controls
+ * Matches web version: AssignTo, AdminNotes, InformationBy (engineer), Status
  */
 import React, { useEffect, useState } from 'react';
 import {
@@ -11,6 +12,8 @@ import {
     TouchableOpacity,
     Alert,
     TextInput,
+    Platform,
+    ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
@@ -47,6 +50,16 @@ function InfoRow({ icon, label, value }: InfoRowProps) {
     );
 }
 
+const INFORMATION_BY_OPTIONS = [
+    { label: 'Select information source', value: '' },
+    { label: 'By Walk', value: 'By Walk' },
+    { label: 'By Phone', value: 'By Phone' },
+    { label: 'By Line', value: 'By Line' },
+    { label: 'By E.Work Order/ Paper', value: 'By E.Work Order/ Paper' },
+    { label: 'By 60 Points', value: 'By 60 Points' },
+    { label: 'By Other', value: 'By Other' },
+];
+
 export default function TicketDetailScreen() {
     const route = useRoute<RouteProp<RouteParams, 'TicketDetail'>>();
     const navigation = useNavigation();
@@ -55,8 +68,13 @@ export default function TicketDetailScreen() {
 
     const [ticket, setTicket] = useState<Ticket | null>(null);
     const [loading, setLoading] = useState(true);
+
+    // Admin editable fields
     const [adminNotes, setAdminNotes] = useState('');
-    const [isEditing, setIsEditing] = useState(false);
+    const [assignTo, setAssignTo] = useState('');
+    const [informationBy, setInformationBy] = useState('');
+    const [saving, setSaving] = useState(false);
+    const [showInfoPicker, setShowInfoPicker] = useState(false);
 
     useEffect(() => {
         const fetchTicket = async () => {
@@ -65,8 +83,11 @@ export default function TicketDetailScreen() {
                 const result = await api.get(ticketId);
                 if (result.success && result.data) {
                     const t = (result.data as { ticket: Ticket }).ticket || result.data;
-                    setTicket(t as Ticket);
-                    setAdminNotes((t as Ticket).adminNotes || '');
+                    const ticketData = t as Ticket;
+                    setTicket(ticketData);
+                    setAdminNotes(ticketData.adminNotes || '');
+                    setAssignTo(ticketData.assignTo || '');
+                    setInformationBy(ticketData.informationBy || '');
                 }
             } catch (error) {
                 console.error('Error fetching ticket:', error);
@@ -80,32 +101,88 @@ export default function TicketDetailScreen() {
     const handleStatusChange = async (newStatus: string) => {
         if (!ticket) return;
 
-        Alert.alert(
-            'Update Status',
-            `Change status to "${getStatusConfig(newStatus).label}"?`,
-            [
-                { text: 'Cancel', style: 'cancel' },
-                {
-                    text: 'Confirm',
-                    onPress: async () => {
-                        const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
-                        const result = await api.update(ticket.id, { status: newStatus });
-                        if (result.success) {
-                            setTicket(prev => prev ? { ...prev, status: newStatus } : null);
-                        }
-                    },
-                },
-            ]
-        );
+        const confirmChange = () => {
+            return new Promise<boolean>((resolve) => {
+                if (Platform.OS === 'web') {
+                    resolve(window.confirm(`Change status to "${getStatusConfig(newStatus).label}"?`));
+                } else {
+                    Alert.alert(
+                        'Update Status',
+                        `Change status to "${getStatusConfig(newStatus).label}"?`,
+                        [
+                            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+                            { text: 'Confirm', onPress: () => resolve(true) },
+                        ]
+                    );
+                }
+            });
+        };
+
+        const confirmed = await confirmChange();
+        if (!confirmed) return;
+
+        const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
+        const result = await api.update(ticket.id, { status: newStatus });
+        if (result.success) {
+            setTicket(prev => prev ? { ...prev, status: newStatus } : null);
+        }
     };
 
-    const handleSaveNotes = async () => {
+    const handleSave = async () => {
         if (!ticket) return;
-        const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
-        const result = await api.update(ticket.id, { adminNotes });
-        if (result.success) {
-            setTicket(prev => prev ? { ...prev, adminNotes } : null);
-            setIsEditing(false);
+
+        // Check if anything changed
+        const assignToChanged = assignTo !== (ticket.assignTo || '');
+        const notesChanged = adminNotes !== (ticket.adminNotes || '');
+        const infoByChanged = ticketType === 'engineer' && informationBy !== (ticket.informationBy || '');
+
+        if (!assignToChanged && !notesChanged && !infoByChanged) {
+            return; // Nothing changed
+        }
+
+        setSaving(true);
+        try {
+            const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
+            const updateData: Record<string, string> = {
+                assignTo,
+                adminNotes,
+            };
+            if (ticketType === 'engineer') {
+                updateData.informationBy = informationBy;
+            }
+
+            const result = await api.update(ticket.id, updateData);
+            if (result.success) {
+                // Update local state
+                setTicket(prev => prev ? {
+                    ...prev,
+                    assignTo,
+                    adminNotes,
+                    ...(ticketType === 'engineer' ? { informationBy } : {}),
+                } : null);
+
+                if (Platform.OS === 'web') {
+                    // eslint-disable-next-line no-alert
+                    alert('Saved successfully!');
+                } else {
+                    Alert.alert('Success', 'Saved successfully!');
+                }
+            } else {
+                if (Platform.OS === 'web') {
+                    alert('Failed to save');
+                } else {
+                    Alert.alert('Error', 'Failed to save');
+                }
+            }
+        } catch (error) {
+            console.error('Error saving:', error);
+            if (Platform.OS === 'web') {
+                alert('Failed to save');
+            } else {
+                Alert.alert('Error', 'Failed to save');
+            }
+        } finally {
+            setSaving(false);
         }
     };
 
@@ -133,6 +210,8 @@ export default function TicketDetailScreen() {
         minute: '2-digit',
     });
     const typePrefix = ticketType === 'it' ? 'IT' : 'Engineer';
+
+    const selectedInfoLabel = INFORMATION_BY_OPTIONS.find(o => o.value === informationBy)?.label || 'Select information source';
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -181,59 +260,155 @@ export default function TicketDetailScreen() {
                     <InfoRow icon="construct-outline" label="Type of Damage" value={ticket.typeOfDamage} />
                     <InfoRow icon="person-outline" label="Reported By" value={ticket.user?.username || 'Unknown'} />
                     <InfoRow icon="calendar-outline" label="Created" value={`${formattedDate} ${formattedTime}`} />
-                    {ticket.assignTo && (
-                        <InfoRow icon="person-circle-outline" label="Assigned To" value={ticket.assignTo} />
-                    )}
                 </View>
             </View>
 
-            {/* Admin Notes */}
+            {/* Admin Actions Section */}
             <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                    <Text style={styles.sectionTitle}>
-                        <Ionicons name="create-outline" size={16} color={Colors.primary} /> Admin Notes
-                    </Text>
-                    {isAdmin && !isEditing && (
-                        <TouchableOpacity onPress={() => setIsEditing(true)} style={styles.editButton}>
-                            <Ionicons name="pencil" size={14} color={Colors.primary} />
-                            <Text style={styles.editButtonText}>Edit</Text>
+                <Text style={styles.sectionTitle}>
+                    <Ionicons name="settings-outline" size={16} color={Colors.primary} />
+                    {' '}{isAdmin ? 'Admin Actions' : 'Ticket Info'}
+                </Text>
+                <View style={styles.adminCard}>
+
+                    {/* Assign To */}
+                    <View style={styles.adminField}>
+                        <Text style={styles.adminFieldLabel}>
+                            <Ionicons name="person-add-outline" size={14} color={Colors.primary} /> Assign To:
+                        </Text>
+                        {isAdmin ? (
+                            <TextInput
+                                style={styles.adminInput}
+                                value={assignTo}
+                                onChangeText={setAssignTo}
+                                placeholder="Type assignee name..."
+                                placeholderTextColor={Colors.textTertiary}
+                            />
+                        ) : (
+                            <View style={styles.readOnlyField}>
+                                <Text style={styles.readOnlyText}>
+                                    {ticket.assignTo || 'Not assigned yet'}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Admin Notes */}
+                    <View style={styles.adminField}>
+                        <Text style={styles.adminFieldLabel}>
+                            <Ionicons name="create-outline" size={14} color={Colors.primary} />
+                            {' '}{isAdmin ? 'Admin Notes:' : 'Notes from Admin:'}
+                        </Text>
+                        {isAdmin ? (
+                            <TextInput
+                                style={[styles.adminInput, styles.notesInput]}
+                                value={adminNotes}
+                                onChangeText={setAdminNotes}
+                                placeholder="Add internal notes here..."
+                                placeholderTextColor={Colors.textTertiary}
+                                multiline
+                                numberOfLines={4}
+                                textAlignVertical="top"
+                            />
+                        ) : (
+                            <View style={styles.readOnlyField}>
+                                <Text style={[styles.readOnlyText, !ticket.adminNotes && { color: Colors.textTertiary }]}>
+                                    {ticket.adminNotes || 'No notes from admin yet'}
+                                </Text>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Information By (Engineer tickets only) */}
+                    {ticketType === 'engineer' && (
+                        <View style={styles.adminField}>
+                            <Text style={styles.adminFieldLabel}>
+                                <Ionicons name="information-circle-outline" size={14} color={Colors.primary} /> Information By:
+                            </Text>
+                            {isAdmin ? (
+                                <View>
+                                    <TouchableOpacity
+                                        style={styles.pickerButton}
+                                        onPress={() => setShowInfoPicker(!showInfoPicker)}
+                                        activeOpacity={0.7}
+                                    >
+                                        <Text style={[
+                                            styles.pickerButtonText,
+                                            !informationBy && { color: Colors.textTertiary }
+                                        ]}>
+                                            {selectedInfoLabel}
+                                        </Text>
+                                        <Ionicons
+                                            name={showInfoPicker ? 'chevron-up' : 'chevron-down'}
+                                            size={18}
+                                            color={Colors.textSecondary}
+                                        />
+                                    </TouchableOpacity>
+                                    {showInfoPicker && (
+                                        <View style={styles.pickerDropdown}>
+                                            {INFORMATION_BY_OPTIONS.map((option) => (
+                                                <TouchableOpacity
+                                                    key={option.value}
+                                                    style={[
+                                                        styles.pickerOption,
+                                                        informationBy === option.value && styles.pickerOptionActive,
+                                                    ]}
+                                                    onPress={() => {
+                                                        setInformationBy(option.value);
+                                                        setShowInfoPicker(false);
+                                                    }}
+                                                >
+                                                    <Text style={[
+                                                        styles.pickerOptionText,
+                                                        informationBy === option.value && styles.pickerOptionTextActive,
+                                                        !option.value && { color: Colors.textTertiary },
+                                                    ]}>
+                                                        {option.label}
+                                                    </Text>
+                                                    {informationBy === option.value && (
+                                                        <Ionicons name="checkmark" size={16} color={Colors.primary} />
+                                                    )}
+                                                </TouchableOpacity>
+                                            ))}
+                                        </View>
+                                    )}
+                                </View>
+                            ) : (
+                                <View style={styles.readOnlyField}>
+                                    <Text style={[styles.readOnlyText, !ticket.informationBy && { color: Colors.textTertiary }]}>
+                                        {ticket.informationBy || 'Not specified'}
+                                    </Text>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Save Button (Admin only) */}
+                    {isAdmin && (
+                        <TouchableOpacity
+                            style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+                            onPress={handleSave}
+                            disabled={saving}
+                            activeOpacity={0.7}
+                        >
+                            {saving ? (
+                                <ActivityIndicator size="small" color={Colors.white} />
+                            ) : (
+                                <Ionicons name="checkmark-circle" size={18} color={Colors.white} />
+                            )}
+                            <Text style={styles.saveButtonText}>
+                                {saving ? 'Saving...' : 'Save'}
+                            </Text>
                         </TouchableOpacity>
                     )}
-                </View>
-                {isEditing ? (
-                    <View style={styles.editContainer}>
-                        <TextInput
-                            style={styles.notesInput}
-                            value={adminNotes}
-                            onChangeText={setAdminNotes}
-                            multiline
-                            numberOfLines={4}
-                            placeholder="Enter admin notes..."
-                            placeholderTextColor={Colors.textTertiary}
-                        />
-                        <View style={styles.editActions}>
-                            <TouchableOpacity
-                                style={styles.cancelButton}
-                                onPress={() => {
-                                    setAdminNotes(ticket.adminNotes || '');
-                                    setIsEditing(false);
-                                }}
-                            >
-                                <Text style={styles.cancelButtonText}>Cancel</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.saveButton} onPress={handleSaveNotes}>
-                                <Ionicons name="checkmark" size={16} color={Colors.white} />
-                                <Text style={styles.saveButtonText}>Save</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                ) : (
-                    <View style={styles.notesBox}>
-                        <Text style={[styles.notesText, !ticket.adminNotes && { color: Colors.textTertiary }]}>
-                            {ticket.adminNotes || 'No admin notes yet'}
+
+                    {/* Last Updated */}
+                    {ticket.updatedAt && (
+                        <Text style={styles.lastUpdated}>
+                            Last updated: {new Date(ticket.updatedAt).toLocaleString()}
                         </Text>
-                    </View>
-                )}
+                    )}
+                </View>
             </View>
 
             {/* Status Update Buttons (Admin only) */}
@@ -382,78 +557,126 @@ const styles = StyleSheet.create({
         fontWeight: FontWeight.medium,
         color: Colors.text,
     },
-    editButton: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: 4,
-        backgroundColor: Colors.primaryBg,
-        borderRadius: BorderRadius.sm,
-        marginBottom: Spacing.md,
-    },
-    editButtonText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.medium,
-        color: Colors.primary,
-    },
-    editContainer: {
-        gap: Spacing.md,
-    },
-    notesInput: {
+
+    // Admin Actions Section
+    adminCard: {
         backgroundColor: Colors.white,
         borderRadius: BorderRadius.lg,
         padding: Spacing.lg,
         borderWidth: 1,
-        borderColor: Colors.primary,
+        borderColor: Colors.primaryBorder,
+        ...Shadow.sm,
+    },
+    adminField: {
+        marginBottom: Spacing.lg,
+    },
+    adminFieldLabel: {
+        fontSize: FontSize.sm,
+        fontWeight: FontWeight.semibold,
+        color: Colors.text,
+        marginBottom: Spacing.sm,
+    },
+    adminInput: {
+        backgroundColor: Colors.background,
+        borderRadius: BorderRadius.lg,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.primaryBorder,
         fontSize: FontSize.sm,
         color: Colors.text,
+    },
+    notesInput: {
         minHeight: 100,
         textAlignVertical: 'top',
     },
-    editActions: {
-        flexDirection: 'row',
-        justifyContent: 'flex-end',
-        gap: Spacing.sm,
-    },
-    cancelButton: {
+    readOnlyField: {
+        backgroundColor: Colors.primaryBg,
+        borderRadius: BorderRadius.lg,
         paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.md,
+        paddingVertical: Spacing.md,
         borderWidth: 1,
-        borderColor: Colors.border,
+        borderColor: Colors.primaryBorder,
     },
-    cancelButtonText: {
+    readOnlyText: {
         fontSize: FontSize.sm,
-        color: Colors.textSecondary,
-        fontWeight: FontWeight.medium,
+        color: Colors.text,
     },
+
+    // Information By Picker
+    pickerButton: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        backgroundColor: Colors.background,
+        borderRadius: BorderRadius.lg,
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        borderWidth: 1,
+        borderColor: Colors.primaryBorder,
+    },
+    pickerButtonText: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+    },
+    pickerDropdown: {
+        marginTop: Spacing.sm,
+        backgroundColor: Colors.white,
+        borderRadius: BorderRadius.lg,
+        borderWidth: 1,
+        borderColor: Colors.primaryBorder,
+        overflow: 'hidden',
+        ...Shadow.md,
+    },
+    pickerOption: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        paddingHorizontal: Spacing.lg,
+        paddingVertical: Spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: Colors.borderLight,
+    },
+    pickerOptionActive: {
+        backgroundColor: Colors.primaryBg,
+    },
+    pickerOptionText: {
+        fontSize: FontSize.sm,
+        color: Colors.text,
+    },
+    pickerOptionTextActive: {
+        color: Colors.primary,
+        fontWeight: FontWeight.semibold,
+    },
+
+    // Save Button
     saveButton: {
         flexDirection: 'row',
         alignItems: 'center',
-        gap: 4,
-        paddingHorizontal: Spacing.lg,
-        paddingVertical: Spacing.sm,
-        borderRadius: BorderRadius.md,
+        justifyContent: 'center',
+        gap: Spacing.sm,
         backgroundColor: Colors.primary,
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing.md,
+        marginTop: Spacing.sm,
+        ...Shadow.sm,
+    },
+    saveButtonDisabled: {
+        opacity: 0.6,
     },
     saveButtonText: {
-        fontSize: FontSize.sm,
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.semibold,
         color: Colors.white,
-        fontWeight: FontWeight.medium,
     },
-    notesBox: {
-        backgroundColor: Colors.white,
-        borderRadius: BorderRadius.lg,
-        padding: Spacing.lg,
-        borderWidth: 1,
-        borderColor: Colors.border,
+    lastUpdated: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        marginTop: Spacing.md,
+        textAlign: 'right',
     },
-    notesText: {
-        fontSize: FontSize.sm,
-        color: Colors.text,
-        lineHeight: 22,
-    },
+
+    // Status Buttons
     statusButtons: {
         flexDirection: 'row',
         flexWrap: 'wrap',

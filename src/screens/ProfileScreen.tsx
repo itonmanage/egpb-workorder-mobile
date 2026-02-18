@@ -2,7 +2,8 @@
  * Profile Screen - User info, stats, logout
  */
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Platform } from 'react-native';
+
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { ROLE_LABELS } from '../constants';
@@ -11,11 +12,17 @@ import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../
 export default function ProfileScreen() {
     const { user, isAdmin, logout } = useAuth();
 
-    const handleLogout = () => {
-        Alert.alert('Logout', 'Are you sure you want to sign out?', [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Sign Out', style: 'destructive', onPress: logout },
-        ]);
+    const handleLogout = async () => {
+        if (Platform.OS === 'web') {
+            if (window.confirm('Are you sure you want to sign out?')) {
+                await logout();
+            }
+        } else {
+            Alert.alert('Logout', 'Are you sure you want to sign out?', [
+                { text: 'Cancel', style: 'cancel' },
+                { text: 'Sign Out', style: 'destructive', onPress: logout },
+            ]);
+        }
     };
 
     const roleLabel = user?.role ? (ROLE_LABELS[user.role] || user.role) : 'User';
@@ -122,7 +129,7 @@ export default function ProfileScreen() {
                     <Ionicons name="server-outline" size={20} color={Colors.primary} />
                     <View style={styles.infoContent}>
                         <Text style={styles.infoLabel}>Mode</Text>
-                        <Text style={styles.infoValue}>Demo (Mock Data)</Text>
+                        <Text style={styles.infoValue}>Connected to API</Text>
                     </View>
                 </View>
             </View>

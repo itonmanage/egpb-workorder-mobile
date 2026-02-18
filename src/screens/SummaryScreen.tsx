@@ -1,11 +1,12 @@
 /**
  * Summary Report Screen
  * Fetches real data from API (same endpoint as web version)
- * Shows ticket statistics, status breakdown, damage type, and department table
+ * Shows ticket statistics, status breakdown, damage type, comparison table,
+ * department/area/information-by breakdowns, and department-by-status table.
  */
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator,
+    View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator, TouchableOpacity,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { TicketType, SummaryStats, DepartmentStatusRow } from '../types';
@@ -23,6 +24,25 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: str
     CANCEL: { label: 'Cancel', color: '#EF4444', bgColor: '#FEF2F2' },
 };
 
+const MONTHS = [
+    { value: 0, label: 'All Time' },
+    { value: 1, label: 'January' },
+    { value: 2, label: 'February' },
+    { value: 3, label: 'March' },
+    { value: 4, label: 'April' },
+    { value: 5, label: 'May' },
+    { value: 6, label: 'June' },
+    { value: 7, label: 'July' },
+    { value: 8, label: 'August' },
+    { value: 9, label: 'September' },
+    { value: 10, label: 'October' },
+    { value: 11, label: 'November' },
+    { value: 12, label: 'December' },
+];
+
+const currentYear = new Date().getFullYear();
+const YEARS = Array.from({ length: 5 }, (_, i) => currentYear - i);
+
 // Simple progress bar
 function ProgressBar({ value, total, color }: { value: number; total: number; color: string }) {
     const width = total > 0 ? (value / total) * 100 : 0;
@@ -37,6 +57,149 @@ const pbStyles = StyleSheet.create({
     fill: { height: '100%', borderRadius: 4 },
 });
 
+// Month/Year Picker component
+function PeriodPicker({
+    month, year, onMonthChange, onYearChange, accentColor,
+}: {
+    month: number; year: number;
+    onMonthChange: (m: number) => void; onYearChange: (y: number) => void;
+    accentColor: string;
+}) {
+    const [showMonthPicker, setShowMonthPicker] = useState(false);
+    const [showYearPicker, setShowYearPicker] = useState(false);
+    const monthLabel = MONTHS.find(m => m.value === month)?.label || '';
+
+    return (
+        <View style={pickerStyles.container}>
+            {/* Month Picker */}
+            <View>
+                <TouchableOpacity
+                    style={[pickerStyles.pickerBtn, { borderColor: accentColor }]}
+                    onPress={() => { setShowMonthPicker(!showMonthPicker); setShowYearPicker(false); }}
+                >
+                    <Text style={[pickerStyles.pickerBtnText, { color: accentColor }]} numberOfLines={1}>
+                        {monthLabel}
+                    </Text>
+                    <Ionicons name={showMonthPicker ? 'chevron-up' : 'chevron-down'} size={14} color={accentColor} />
+                </TouchableOpacity>
+                {showMonthPicker && (
+                    <View style={pickerStyles.dropdown}>
+                        <ScrollView style={{ maxHeight: 200 }} nestedScrollEnabled>
+                            {MONTHS.map(m => (
+                                <TouchableOpacity
+                                    key={m.value}
+                                    style={[pickerStyles.dropdownItem, month === m.value && { backgroundColor: accentColor + '20' }]}
+                                    onPress={() => { onMonthChange(m.value); setShowMonthPicker(false); }}
+                                >
+                                    <Text style={[pickerStyles.dropdownText, month === m.value && { color: accentColor, fontWeight: '700' }]}>
+                                        {m.label}
+                                    </Text>
+                                </TouchableOpacity>
+                            ))}
+                        </ScrollView>
+                    </View>
+                )}
+            </View>
+            {/* Year Picker */}
+            <View>
+                <TouchableOpacity
+                    style={[pickerStyles.pickerBtn, { borderColor: accentColor }]}
+                    onPress={() => { setShowYearPicker(!showYearPicker); setShowMonthPicker(false); }}
+                >
+                    <Text style={[pickerStyles.pickerBtnText, { color: accentColor }]}>{year}</Text>
+                    <Ionicons name={showYearPicker ? 'chevron-up' : 'chevron-down'} size={14} color={accentColor} />
+                </TouchableOpacity>
+                {showYearPicker && (
+                    <View style={pickerStyles.dropdown}>
+                        {YEARS.map(y => (
+                            <TouchableOpacity
+                                key={y}
+                                style={[pickerStyles.dropdownItem, year === y && { backgroundColor: accentColor + '20' }]}
+                                onPress={() => { onYearChange(y); setShowYearPicker(false); }}
+                            >
+                                <Text style={[pickerStyles.dropdownText, year === y && { color: accentColor, fontWeight: '700' }]}>
+                                    {y}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                )}
+            </View>
+        </View>
+    );
+}
+
+const pickerStyles = StyleSheet.create({
+    container: { flexDirection: 'row', gap: 8, alignItems: 'center', zIndex: 100 },
+    pickerBtn: {
+        flexDirection: 'row', alignItems: 'center', gap: 4,
+        paddingHorizontal: 10, paddingVertical: 6,
+        borderRadius: 8, borderWidth: 1, backgroundColor: Colors.white,
+    },
+    pickerBtnText: { fontSize: 12, fontWeight: '600' },
+    dropdown: {
+        position: 'absolute', top: 36, left: 0, minWidth: 120,
+        backgroundColor: Colors.white, borderRadius: 10, borderWidth: 1, borderColor: Colors.borderLight,
+        ...Shadow.md, zIndex: 200,
+    },
+    dropdownItem: { paddingVertical: 8, paddingHorizontal: 12 },
+    dropdownText: { fontSize: 13, color: Colors.text },
+});
+
+// Simple table for breakdown data (department, area, info-by)
+function BreakdownTable({
+    title, subtitle, icon, data, totalTickets, barColor,
+}: {
+    title: string; subtitle: string; icon: string; data: { name: string; count: number }[];
+    totalTickets: number; barColor: string;
+}) {
+    if (!data || data.length === 0) return null;
+    return (
+        <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+                <Ionicons name={icon as any} size={20} color={Colors.text} />
+                <Text style={styles.sectionTitle}>{title}</Text>
+            </View>
+            <View style={styles.card}>
+                {/* Header */}
+                <View style={breakdownStyles.headerRow}>
+                    <Text style={[breakdownStyles.headerCell, { flex: 1 }]}>{subtitle}</Text>
+                    <Text style={[breakdownStyles.headerCell, { width: 55, textAlign: 'right' }]}>Count</Text>
+                    <Text style={[breakdownStyles.headerCell, { width: 50, textAlign: 'right' }]}>%</Text>
+                </View>
+                {/* Rows */}
+                {data.map((item, i) => {
+                    const pct = totalTickets > 0 ? (item.count / totalTickets * 100).toFixed(1) : '0.0';
+                    return (
+                        <View key={`${item.name}-${i}`} style={[breakdownStyles.row, i % 2 === 0 && breakdownStyles.rowAlt]}>
+                            <View style={{ flex: 1, gap: 4 }}>
+                                <Text style={breakdownStyles.name} numberOfLines={1}>{item.name}</Text>
+                                <ProgressBar value={item.count} total={data[0]?.count || 1} color={barColor} />
+                            </View>
+                            <Text style={[breakdownStyles.count, { color: barColor }]}>{item.count.toLocaleString()}</Text>
+                            <Text style={breakdownStyles.pct}>{pct}%</Text>
+                        </View>
+                    );
+                })}
+            </View>
+        </View>
+    );
+}
+
+const breakdownStyles = StyleSheet.create({
+    headerRow: {
+        flexDirection: 'row', alignItems: 'center', gap: 8,
+        paddingBottom: 8, borderBottomWidth: 2, borderBottomColor: Colors.border, marginBottom: 4,
+    },
+    headerCell: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 },
+    row: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 8 },
+    rowAlt: { backgroundColor: '#FAFAFA', marginHorizontal: -Spacing.lg, paddingHorizontal: Spacing.lg },
+    name: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium },
+    count: { width: 55, textAlign: 'right', fontSize: FontSize.sm, fontWeight: FontWeight.bold },
+    pct: { width: 50, textAlign: 'right', fontSize: FontSize.xs, color: Colors.textTertiary },
+});
+
+
 export default function SummaryScreen({ route }: any) {
     const ticketType: TicketType = route?.params?.ticketType || 'engineer';
     const isIT = ticketType === 'it';
@@ -47,7 +210,19 @@ export default function SummaryScreen({ route }: any) {
     const [error, setError] = useState<string | null>(null);
     const [stats, setStats] = useState<SummaryStats | null>(null);
 
-    // Fetch data from API (same endpoint as web version)
+    // Comparison states (matching web version)
+    const now = new Date();
+    const [leftMonth, setLeftMonth] = useState(now.getMonth() + 1);
+    const [leftYear, setLeftYear] = useState(now.getFullYear());
+    const [rightMonth, setRightMonth] = useState(now.getMonth() === 0 ? 12 : now.getMonth());
+    const [rightYear, setRightYear] = useState(now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear());
+    const [leftData, setLeftData] = useState<{ type: string; count: number; percentage: number }[]>([]);
+    const [rightData, setRightData] = useState<{ type: string; count: number; percentage: number }[]>([]);
+    const [leftTotal, setLeftTotal] = useState(0);
+    const [rightTotal, setRightTotal] = useState(0);
+    const [comparisonLoading, setComparisonLoading] = useState(false);
+
+    // Fetch summary data
     useEffect(() => {
         const fetchSummary = async () => {
             setLoading(true);
@@ -67,6 +242,34 @@ export default function SummaryScreen({ route }: any) {
         };
         fetchSummary();
     }, [apiType]);
+
+    // Fetch comparison data
+    const fetchComparison = useCallback(async () => {
+        setComparisonLoading(true);
+        try {
+            const [leftRes, rightRes] = await Promise.all([
+                apiService.stats.damageTypes({ month: leftMonth, year: leftYear, type: apiType }),
+                apiService.stats.damageTypes({ month: rightMonth, year: rightYear, type: apiType }),
+            ]);
+
+            if (leftRes.success && leftRes.data) {
+                setLeftData(leftRes.data.typeBreakdown);
+                setLeftTotal(leftRes.data.totalCount);
+            }
+            if (rightRes.success && rightRes.data) {
+                setRightData(rightRes.data.typeBreakdown);
+                setRightTotal(rightRes.data.totalCount);
+            }
+        } catch (err) {
+            console.error('Fetch comparison error:', err);
+        } finally {
+            setComparisonLoading(false);
+        }
+    }, [leftMonth, leftYear, rightMonth, rightYear, apiType]);
+
+    useEffect(() => {
+        fetchComparison();
+    }, [fetchComparison]);
 
     // Get the department breakdown based on ticket type
     const deptBreakdown: DepartmentStatusRow[] = useMemo(() => {
@@ -93,6 +296,29 @@ export default function SummaryScreen({ route }: any) {
     const totalStatusCount = useMemo(() => {
         return Object.values(statusCounts).reduce((a, b) => a + b, 0);
     }, [statusCounts]);
+
+    // All damage types from both periods (for comparison table)
+    const comparisonTypes = useMemo(() => {
+        const allTypes = new Set([
+            ...leftData.map(d => d.type),
+            ...rightData.map(d => d.type),
+        ]);
+        return Array.from(allTypes).sort((a, b) => {
+            const leftA = leftData.find(d => d.type === a)?.count || 0;
+            const leftB = leftData.find(d => d.type === b)?.count || 0;
+            return leftB - leftA;
+        });
+    }, [leftData, rightData]);
+
+    const leftPeriodLabel = useMemo(() => {
+        if (leftMonth === 0) return 'All Time';
+        return `${MONTHS.find(m => m.value === leftMonth)?.label || ''} ${leftYear}`;
+    }, [leftMonth, leftYear]);
+
+    const rightPeriodLabel = useMemo(() => {
+        if (rightMonth === 0) return 'All Time';
+        return `${MONTHS.find(m => m.value === rightMonth)?.label || ''} ${rightYear}`;
+    }, [rightMonth, rightYear]);
 
     if (loading) {
         return (
@@ -205,6 +431,128 @@ export default function SummaryScreen({ route }: any) {
                 </View>
             </View>
 
+            {/* ============ Detailed Statistics Comparison (Both IT & Engineer) ============ */}
+            <View style={[styles.section, { zIndex: 50 }]}>
+                <View style={styles.sectionHeader}>
+                    <Ionicons name="swap-horizontal" size={20} color={Colors.text} />
+                    <Text style={styles.sectionTitle}>Statistics Comparison</Text>
+                </View>
+                <View style={[styles.card, { zIndex: 50 }]}>
+                    {/* Period Pickers */}
+                    <View style={compStyles.periodRow}>
+                        <View style={[compStyles.periodCol, { zIndex: 110 }]}>
+                            <Text style={[compStyles.periodLabel, { color: '#3B82F6' }]}>Period 1</Text>
+                            <PeriodPicker
+                                month={leftMonth} year={leftYear}
+                                onMonthChange={setLeftMonth} onYearChange={setLeftYear}
+                                accentColor="#3B82F6"
+                            />
+                            <Text style={[compStyles.periodTotal, { color: '#3B82F6' }]}>Total: {leftTotal}</Text>
+                        </View>
+                        <View style={[compStyles.periodCol, { zIndex: 100 }]}>
+                            <Text style={[compStyles.periodLabel, { color: '#10B981' }]}>Period 2</Text>
+                            <PeriodPicker
+                                month={rightMonth} year={rightYear}
+                                onMonthChange={setRightMonth} onYearChange={setRightYear}
+                                accentColor="#10B981"
+                            />
+                            <Text style={[compStyles.periodTotal, { color: '#10B981' }]}>Total: {rightTotal}</Text>
+                        </View>
+                    </View>
+
+                    {/* Comparison Table */}
+                    {comparisonLoading ? (
+                        <View style={{ paddingVertical: 24, alignItems: 'center' }}>
+                            <ActivityIndicator size="small" color={Colors.primary} />
+                        </View>
+                    ) : (
+                        <ScrollView horizontal showsHorizontalScrollIndicator={true} style={{ marginTop: 12 }}>
+                            <View>
+                                {/* Table Header */}
+                                <View style={compStyles.tableHeader}>
+                                    <Text style={[compStyles.thCell, { width: 120 }]}>Damage Type</Text>
+                                    <Text style={[compStyles.thCell, compStyles.thBlue, { width: 55 }]}>Count</Text>
+                                    <Text style={[compStyles.thCell, compStyles.thBlue, { width: 50 }]}>%</Text>
+                                    <Text style={[compStyles.thCell, compStyles.thGreen, { width: 55 }]}>Count</Text>
+                                    <Text style={[compStyles.thCell, compStyles.thGreen, { width: 50 }]}>%</Text>
+                                </View>
+                                {/* Period Labels */}
+                                <View style={compStyles.periodLabelRow}>
+                                    <Text style={[compStyles.periodLabelCell, { width: 120 }]} />
+                                    <Text style={[compStyles.periodLabelCell, compStyles.thBlue, { width: 105 }]} numberOfLines={1}>
+                                        {leftPeriodLabel}
+                                    </Text>
+                                    <Text style={[compStyles.periodLabelCell, compStyles.thGreen, { width: 105 }]} numberOfLines={1}>
+                                        {rightPeriodLabel}
+                                    </Text>
+                                </View>
+                                {/* Table Rows */}
+                                {comparisonTypes.length > 0 ? comparisonTypes.map((type, i) => {
+                                    const left = leftData.find(d => d.type === type);
+                                    const right = rightData.find(d => d.type === type);
+                                    return (
+                                        <View key={type} style={[compStyles.row, i % 2 === 0 && compStyles.rowAlt]}>
+                                            <Text style={[compStyles.cell, { width: 120 }]} numberOfLines={1}>{type}</Text>
+                                            <Text style={[compStyles.cell, { width: 55, textAlign: 'center', color: '#3B82F6', fontWeight: '600' }]}>
+                                                {left?.count?.toLocaleString() || 0}
+                                            </Text>
+                                            <Text style={[compStyles.cell, { width: 50, textAlign: 'center', color: '#93C5FD' }]}>
+                                                {left?.percentage?.toFixed(1) || '0.0'}%
+                                            </Text>
+                                            <Text style={[compStyles.cell, { width: 55, textAlign: 'center', color: '#10B981', fontWeight: '600' }]}>
+                                                {right?.count?.toLocaleString() || 0}
+                                            </Text>
+                                            <Text style={[compStyles.cell, { width: 50, textAlign: 'center', color: '#6EE7B7' }]}>
+                                                {right?.percentage?.toFixed(1) || '0.0'}%
+                                            </Text>
+                                        </View>
+                                    );
+                                }) : (
+                                    <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                                        <Text style={styles.emptyText}>No data available for selected periods</Text>
+                                    </View>
+                                )}
+                            </View>
+                        </ScrollView>
+                    )}
+                </View>
+            </View>
+
+            {/* ============ Engineer-only sections ============ */}
+            {!isIT && (
+                <>
+                    {/* Department Breakdown */}
+                    <BreakdownTable
+                        title="Department"
+                        subtitle="Department"
+                        icon="business"
+                        data={stats.departmentBreakdown || []}
+                        totalTickets={totalTickets}
+                        barColor="#10B981"
+                    />
+
+                    {/* Area/Location Breakdown */}
+                    <BreakdownTable
+                        title="Area"
+                        subtitle="Area"
+                        icon="location"
+                        data={stats.locationBreakdown || []}
+                        totalTickets={totalTickets}
+                        barColor="#3B82F6"
+                    />
+
+                    {/* Information By Breakdown */}
+                    <BreakdownTable
+                        title="Information By"
+                        subtitle="Source"
+                        icon="information-circle"
+                        data={stats.informationByBreakdown || []}
+                        totalTickets={totalTickets}
+                        barColor="#8B5CF6"
+                    />
+                </>
+            )}
+
             {/* Department by Status Table */}
             {deptBreakdown.length > 0 && (
                 <View style={styles.section}>
@@ -267,6 +615,30 @@ export default function SummaryScreen({ route }: any) {
         </ScrollView>
     );
 }
+
+// Comparison table styles
+const compStyles = StyleSheet.create({
+    periodRow: {
+        flexDirection: 'row', gap: 12, marginBottom: 4,
+    },
+    periodCol: { flex: 1, gap: 6 },
+    periodLabel: { fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 0.5 },
+    periodTotal: { fontSize: 11, fontWeight: '600' },
+    tableHeader: {
+        flexDirection: 'row', backgroundColor: '#F9FAFB',
+        borderBottomWidth: 2, borderBottomColor: Colors.border, paddingVertical: 8,
+    },
+    thCell: { fontSize: 10, fontWeight: '700', color: Colors.textSecondary, textTransform: 'uppercase', paddingHorizontal: 4, textAlign: 'center' },
+    thBlue: { backgroundColor: '#EFF6FF' },
+    thGreen: { backgroundColor: '#ECFDF5' },
+    periodLabelRow: {
+        flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: Colors.borderLight, paddingVertical: 4,
+    },
+    periodLabelCell: { fontSize: 10, color: Colors.textTertiary, textAlign: 'center', paddingHorizontal: 4 },
+    row: { flexDirection: 'row', paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: Colors.borderLight },
+    rowAlt: { backgroundColor: '#FAFAFA' },
+    cell: { fontSize: FontSize.sm, color: Colors.text, paddingHorizontal: 4 },
+});
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },

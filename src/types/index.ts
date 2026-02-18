@@ -64,6 +64,9 @@ export interface SummaryStats {
     avgResolutionHours: number | null;
     statusBreakdown: { status: string; count: number }[];
     typeBreakdown: { type: string; count: number }[];
+    locationBreakdown?: { name: string; count: number }[];
+    informationByBreakdown?: { name: string; count: number }[];
+    departmentBreakdown?: { name: string; count: number }[];
     itDepartmentStatusBreakdown?: DepartmentStatusRow[];
     departmentStatusBreakdown?: DepartmentStatusRow[];
 }
