@@ -84,14 +84,14 @@ export default function CreateTicketScreen({ route }: any) {
             mediaTypes: ['images'],
             allowsMultipleSelection: true,
             quality: 0.7,
-            selectionLimit: 5 - images.length,
+            selectionLimit: 10 - images.length,
         });
         if (!result.canceled && result.assets) {
             const newImages = result.assets.map(asset => ({
                 uri: asset.uri,
                 fileName: asset.fileName || `image_${Date.now()}.jpg`,
             }));
-            setImages(prev => [...prev, ...newImages].slice(0, 5));
+            setImages(prev => [...prev, ...newImages].slice(0, 10));
         }
     };
 
@@ -110,14 +110,14 @@ export default function CreateTicketScreen({ route }: any) {
             setImages(prev => [...prev, {
                 uri: asset.uri,
                 fileName: asset.fileName || `photo_${Date.now()}.jpg`,
-            }].slice(0, 5));
+            }].slice(0, 10));
         }
     };
 
     // Show image source picker
     const handleAddImage = () => {
-        if (images.length >= 5) {
-            Alert.alert('Limit Reached', 'Maximum 5 images allowed.');
+        if (images.length >= 10) {
+            Alert.alert('Limit Reached', 'Maximum 10 images allowed.');
             return;
         }
         if (Platform.OS === 'web') {
@@ -222,7 +222,7 @@ export default function CreateTicketScreen({ route }: any) {
                 {/* Image Attachment */}
                 <View style={styles.field}>
                     <Text style={styles.label}>Attach Images</Text>
-                    <Text style={styles.imageHint}>{images.length}/5 images • JPG, PNG</Text>
+                    <Text style={styles.imageHint}>{images.length}/10 images • JPG, PNG</Text>
 
                     {/* Image previews */}
                     {images.length > 0 && (
@@ -239,7 +239,7 @@ export default function CreateTicketScreen({ route }: any) {
                     )}
 
                     {/* Add image button */}
-                    {images.length < 5 && (
+                    {images.length < 10 && (
                         <TouchableOpacity style={styles.addImageBtn} onPress={handleAddImage} activeOpacity={0.7}>
                             <Ionicons name="camera-outline" size={24} color={Colors.primary} />
                             <Text style={styles.addImageText}>

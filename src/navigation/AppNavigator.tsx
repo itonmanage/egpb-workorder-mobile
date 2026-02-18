@@ -13,6 +13,7 @@ import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import TicketDetailScreen from '../screens/TicketDetailScreen';
 import CreateTicketScreen from '../screens/CreateTicketScreen';
+import SummaryScreen from '../screens/SummaryScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import { LoadingSpinner } from '../components/LoadingAndEmpty';
 
@@ -22,6 +23,7 @@ export type RootStackParamList = {
     Main: undefined;
     TicketDetail: { ticketId: string; ticketType: TicketType };
     CreateTicket: { ticketType: TicketType };
+    SummaryReport: { ticketType: TicketType };
 };
 
 export type MainTabParamList = {
@@ -140,6 +142,18 @@ export default function AppNavigator() {
                         options={{
                             headerShown: true,
                             title: 'Create Ticket',
+                            headerStyle: { backgroundColor: Colors.white },
+                            headerTintColor: Colors.primary,
+                            headerTitleStyle: { fontWeight: FontWeight.bold, color: Colors.text },
+                            headerShadowVisible: false,
+                        }}
+                    />
+                    <Stack.Screen
+                        name="SummaryReport"
+                        component={SummaryScreen}
+                        options={{
+                            headerShown: true,
+                            title: 'Summary Report',
                             headerStyle: { backgroundColor: Colors.white },
                             headerTintColor: Colors.primary,
                             headerTitleStyle: { fontWeight: FontWeight.bold, color: Colors.text },

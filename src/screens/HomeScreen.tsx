@@ -27,6 +27,7 @@ type RootStackParamList = {
     HomeTabs: undefined;
     TicketDetail: { ticketId: string; ticketType: TicketType };
     CreateTicket: { ticketType: TicketType };
+    SummaryReport: { ticketType: TicketType };
 };
 
 interface StatCardProps {
@@ -126,6 +127,16 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
                     </Text>
                 </View>
                 <View style={styles.headerRight}>
+                    {isAdmin && (
+                        <TouchableOpacity
+                            style={styles.reportBtn}
+                            onPress={() => navigation.navigate('SummaryReport', { ticketType })}
+                            activeOpacity={0.7}
+                        >
+                            <Ionicons name="bar-chart" size={18} color={Colors.primary} />
+                            <Text style={styles.reportBtnText}>Report</Text>
+                        </TouchableOpacity>
+                    )}
                     {isAdmin && (
                         <View style={styles.adminBadge}>
                             <Text style={styles.adminBadgeText}>Admin</Text>
@@ -254,6 +265,22 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         alignItems: 'center',
         gap: Spacing.sm,
+    },
+    reportBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: Colors.primaryBg,
+        paddingHorizontal: Spacing.md,
+        paddingVertical: 6,
+        borderRadius: BorderRadius.md,
+        borderWidth: 1,
+        borderColor: Colors.primaryBorder,
+    },
+    reportBtnText: {
+        fontSize: FontSize.xs,
+        fontWeight: FontWeight.semibold,
+        color: Colors.primary,
     },
     adminBadge: {
         backgroundColor: Colors.primaryBg,
