@@ -1,32 +1,29 @@
 /**
  * Summary Report Screen
- * Shows ticket statistics, status breakdown, and damage type analysis
- * For admin users - accessible from each dashboard
+ * Fetches real data from API (same endpoint as web version)
+ * Shows ticket statistics, status breakdown, damage type, and department table
  */
-import React, { useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
-    View, Text, StyleSheet, ScrollView, Dimensions,
+    View, Text, StyleSheet, ScrollView, Dimensions, ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { TicketType, Ticket, TicketStats } from '../types';
+import { TicketType, SummaryStats, DepartmentStatusRow } from '../types';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../constants/theme';
-import {
-    MOCK_STATS, MOCK_ENGINEER_STATS,
-    MOCK_IT_TICKETS, MOCK_ENGINEER_TICKETS,
-} from '../services/mockData';
+import apiService from '../services/api';
 
 const screenWidth = Dimensions.get('window').width;
 
 // Status colors matching web app
-const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; icon: string }> = {
-    NEW: { label: 'New', color: '#3B82F6', bgColor: '#EFF6FF', icon: 'radio-button-on' },
-    IN_PROGRESS: { label: 'On Process', color: '#F59E0B', bgColor: '#FFFBEB', icon: 'time' },
-    ON_HOLD: { label: 'On Hold', color: '#F97316', bgColor: '#FFF7ED', icon: 'pause-circle' },
-    DONE: { label: 'Done', color: '#10B981', bgColor: '#ECFDF5', icon: 'checkmark-circle' },
-    CANCEL: { label: 'Cancel', color: '#EF4444', bgColor: '#FEF2F2', icon: 'close-circle' },
+const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string }> = {
+    NEW: { label: 'New', color: '#3B82F6', bgColor: '#EFF6FF' },
+    IN_PROGRESS: { label: 'On Process', color: '#F59E0B', bgColor: '#FFFBEB' },
+    ON_HOLD: { label: 'On Hold', color: '#F97316', bgColor: '#FFF7ED' },
+    DONE: { label: 'Done', color: '#10B981', bgColor: '#ECFDF5' },
+    CANCEL: { label: 'Cancel', color: '#EF4444', bgColor: '#FEF2F2' },
 };
 
-// Simple progress bar component
+// Simple progress bar
 function ProgressBar({ value, total, color }: { value: number; total: number; color: string }) {
     const width = total > 0 ? (value / total) * 100 : 0;
     return (
@@ -44,42 +41,76 @@ export default function SummaryScreen({ route }: any) {
     const ticketType: TicketType = route?.params?.ticketType || 'engineer';
     const isIT = ticketType === 'it';
     const typeLabel = isIT ? 'IT' : 'Engineer';
-    const tickets: Ticket[] = isIT ? MOCK_IT_TICKETS : MOCK_ENGINEER_TICKETS;
-    const stats: TicketStats = isIT ? MOCK_STATS : MOCK_ENGINEER_STATS;
-    const totalTickets = Object.values(stats).reduce((a, b) => a + b, 0);
+    const apiType = isIT ? 'IT' : 'ENGINEER';
 
-    // Damage type breakdown
-    const damageBreakdown = useMemo(() => {
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
+    const [stats, setStats] = useState<SummaryStats | null>(null);
+
+    // Fetch data from API (same endpoint as web version)
+    useEffect(() => {
+        const fetchSummary = async () => {
+            setLoading(true);
+            setError(null);
+            try {
+                const result = await apiService.stats.summary({ type: apiType });
+                if (result.success && result.data) {
+                    setStats(result.data as unknown as SummaryStats);
+                } else {
+                    setError(result.error || 'Failed to load summary data');
+                }
+            } catch (err) {
+                setError('Network error. Please try again.');
+            } finally {
+                setLoading(false);
+            }
+        };
+        fetchSummary();
+    }, [apiType]);
+
+    // Get the department breakdown based on ticket type
+    const deptBreakdown: DepartmentStatusRow[] = useMemo(() => {
+        if (!stats) return [];
+        return (isIT ? stats.itDepartmentStatusBreakdown : stats.departmentStatusBreakdown) || [];
+    }, [stats, isIT]);
+
+    const totalTickets = stats?.totalTickets || 0;
+
+    // Status counts from statusBreakdown
+    const statusCounts = useMemo(() => {
+        if (!stats) return { NEW: 0, IN_PROGRESS: 0, ON_HOLD: 0, DONE: 0, CANCEL: 0 };
         const map: Record<string, number> = {};
-        tickets.forEach(t => {
-            const key = t.typeOfDamage || 'Unknown';
-            map[key] = (map[key] || 0) + 1;
-        });
-        return Object.entries(map)
-            .map(([type, count]) => ({ type, count, pct: totalTickets > 0 ? (count / totalTickets * 100) : 0 }))
-            .sort((a, b) => b.count - a.count);
-    }, [tickets, totalTickets]);
+        stats.statusBreakdown.forEach(s => { map[s.status] = s.count; });
+        return {
+            NEW: map.NEW || 0,
+            IN_PROGRESS: map.IN_PROGRESS || 0,
+            ON_HOLD: map.ON_HOLD || 0,
+            DONE: map.DONE || 0,
+            CANCEL: map.CANCEL || 0,
+        };
+    }, [stats]);
 
-    // Department breakdown
-    const deptBreakdown = useMemo(() => {
-        const map: Record<string, Record<string, number>> = {};
-        tickets.forEach(t => {
-            const dept = t.department || 'Unknown';
-            if (!map[dept]) map[dept] = { NEW: 0, IN_PROGRESS: 0, ON_HOLD: 0, DONE: 0, CANCEL: 0, total: 0 };
-            map[dept][t.status] = (map[dept][t.status] || 0) + 1;
-            map[dept].total += 1;
-        });
-        return Object.entries(map)
-            .map(([dept, counts]) => ({ dept, ...counts }))
-            .sort((a: any, b: any) => b.total - a.total);
-    }, [tickets]);
+    const totalStatusCount = useMemo(() => {
+        return Object.values(statusCounts).reduce((a, b) => a + b, 0);
+    }, [statusCounts]);
 
-    // Recent tickets (latest 5)
-    const recentTickets = useMemo(() => {
-        return [...tickets]
-            .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-            .slice(0, 5);
-    }, [tickets]);
+    if (loading) {
+        return (
+            <View style={styles.centered}>
+                <ActivityIndicator size="large" color={Colors.primary} />
+                <Text style={styles.loadingText}>Loading summary...</Text>
+            </View>
+        );
+    }
+
+    if (error || !stats) {
+        return (
+            <View style={styles.centered}>
+                <Ionicons name="warning" size={48} color={Colors.error} />
+                <Text style={styles.errorText}>{error || 'No data available'}</Text>
+            </View>
+        );
+    }
 
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -95,23 +126,23 @@ export default function SummaryScreen({ route }: any) {
             <View style={styles.statsGrid}>
                 <View style={[styles.statCard, { borderLeftColor: '#3B82F6' }]}>
                     <Ionicons name="bar-chart" size={22} color="#3B82F6" />
-                    <Text style={styles.statNumber}>{totalTickets}</Text>
+                    <Text style={styles.statNumber}>{stats.totalTickets.toLocaleString()}</Text>
                     <Text style={styles.statLabel}>Total Tickets</Text>
                 </View>
                 <View style={[styles.statCard, { borderLeftColor: '#10B981' }]}>
                     <Ionicons name="checkmark-done" size={22} color="#10B981" />
-                    <Text style={styles.statNumber}>{stats.DONE}</Text>
-                    <Text style={styles.statLabel}>Completed</Text>
+                    <Text style={styles.statNumber}>{stats.thisMonthTickets.toLocaleString()}</Text>
+                    <Text style={styles.statLabel}>Done (MTD)</Text>
+                </View>
+                <View style={[styles.statCard, { borderLeftColor: '#8B5CF6' }]}>
+                    <Ionicons name="trending-up" size={22} color="#8B5CF6" />
+                    <Text style={styles.statNumber}>{stats.lastMonthTickets.toLocaleString()}</Text>
+                    <Text style={styles.statLabel}>Last Month</Text>
                 </View>
                 <View style={[styles.statCard, { borderLeftColor: '#F59E0B' }]}>
-                    <Ionicons name="hourglass" size={22} color="#F59E0B" />
-                    <Text style={styles.statNumber}>{stats.IN_PROGRESS + stats.ON_HOLD}</Text>
-                    <Text style={styles.statLabel}>In Progress</Text>
-                </View>
-                <View style={[styles.statCard, { borderLeftColor: '#EF4444' }]}>
-                    <Ionicons name="alert-circle" size={22} color="#EF4444" />
-                    <Text style={styles.statNumber}>{stats.NEW}</Text>
-                    <Text style={styles.statLabel}>Pending</Text>
+                    <Ionicons name="calendar" size={22} color="#F59E0B" />
+                    <Text style={styles.statNumber}>{stats.yearToDateTickets.toLocaleString()}</Text>
+                    <Text style={styles.statLabel}>Year-to-Date</Text>
                 </View>
             </View>
 
@@ -119,21 +150,22 @@ export default function SummaryScreen({ route }: any) {
             <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                     <Ionicons name="pie-chart" size={20} color={Colors.text} />
-                    <Text style={styles.sectionTitle}>Status Breakdown</Text>
+                    <Text style={styles.sectionTitle}>Tickets by Status</Text>
+                    <Text style={styles.sectionSubtitle}>Total: {totalStatusCount.toLocaleString()}</Text>
                 </View>
                 <View style={styles.card}>
-                    {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-                        const count = stats[key as keyof TicketStats] || 0;
-                        const pct = totalTickets > 0 ? ((count / totalTickets) * 100).toFixed(1) : '0.0';
+                    {stats.statusBreakdown.map(item => {
+                        const config = STATUS_CONFIG[item.status] || STATUS_CONFIG.NEW;
+                        const pct = totalStatusCount > 0 ? ((item.count / totalStatusCount) * 100).toFixed(1) : '0.0';
                         return (
-                            <View key={key} style={styles.statusRow}>
+                            <View key={item.status} style={styles.statusRow}>
                                 <View style={styles.statusRowLeft}>
                                     <View style={[styles.statusDot, { backgroundColor: config.color }]} />
                                     <Text style={styles.statusName}>{config.label}</Text>
                                 </View>
-                                <ProgressBar value={count} total={totalTickets} color={config.color} />
+                                <ProgressBar value={item.count} total={totalStatusCount} color={config.color} />
                                 <View style={styles.statusRowRight}>
-                                    <Text style={[styles.statusCount, { color: config.color }]}>{count}</Text>
+                                    <Text style={[styles.statusCount, { color: config.color }]}>{item.count}</Text>
                                     <Text style={styles.statusPct}>({pct}%)</Text>
                                 </View>
                             </View>
@@ -145,100 +177,91 @@ export default function SummaryScreen({ route }: any) {
             {/* Damage Type Breakdown */}
             <View style={styles.section}>
                 <View style={styles.sectionHeader}>
-                    <Ionicons name="construct" size={20} color={Colors.text} />
+                    <Ionicons name="shield" size={20} color={Colors.text} />
                     <Text style={styles.sectionTitle}>Top Damage Types</Text>
                 </View>
                 <View style={styles.card}>
-                    {damageBreakdown.length > 0 ? damageBreakdown.map((item, i) => (
-                        <View key={item.type} style={styles.damageRow}>
-                            <View style={styles.damageRank}>
-                                <Text style={styles.damageRankText}>{i + 1}</Text>
+                    {stats.typeBreakdown && stats.typeBreakdown.length > 0 ? stats.typeBreakdown.map((item, i) => {
+                        const maxCount = stats.typeBreakdown[0]?.count || 1;
+                        const pct = totalTickets > 0 ? (item.count / totalTickets * 100).toFixed(1) : '0.0';
+                        return (
+                            <View key={item.type} style={styles.damageRow}>
+                                <View style={styles.damageRank}>
+                                    <Text style={styles.damageRankText}>{i + 1}</Text>
+                                </View>
+                                <View style={styles.damageInfo}>
+                                    <Text style={styles.damageName} numberOfLines={1}>{item.type}</Text>
+                                    <ProgressBar value={item.count} total={maxCount} color={Colors.primary} />
+                                </View>
+                                <View style={styles.damageCount}>
+                                    <Text style={styles.damageCountText}>{item.count}</Text>
+                                    <Text style={styles.damagePct}>{pct}%</Text>
+                                </View>
                             </View>
-                            <View style={styles.damageInfo}>
-                                <Text style={styles.damageName} numberOfLines={1}>{item.type}</Text>
-                                <ProgressBar value={item.count} total={damageBreakdown[0]?.count || 1} color={Colors.primary} />
-                            </View>
-                            <View style={styles.damageCount}>
-                                <Text style={styles.damageCountText}>{item.count}</Text>
-                                <Text style={styles.damagePct}>{item.pct.toFixed(1)}%</Text>
-                            </View>
-                        </View>
-                    )) : (
+                        );
+                    }) : (
                         <Text style={styles.emptyText}>No data available</Text>
                     )}
                 </View>
             </View>
 
-            {/* Department by Status */}
-            <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                    <Ionicons name="business" size={20} color={Colors.text} />
-                    <Text style={styles.sectionTitle}>Department by Status</Text>
-                </View>
-                <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.tableScroll}>
-                    <View>
-                        {/* Table Header */}
-                        <View style={styles.tableHeader}>
-                            <Text style={[styles.tableHeaderCell, { width: 120 }]}>Department</Text>
-                            <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 60, color: '#3B82F6' }]}>New</Text>
-                            <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 75, color: '#F59E0B' }]}>Process</Text>
-                            <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 60, color: '#F97316' }]}>Hold</Text>
-                            <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 60, color: '#10B981' }]}>Done</Text>
-                            <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 65, color: '#EF4444' }]}>Cancel</Text>
-                            <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 55, fontWeight: '700' }]}>Total</Text>
-                        </View>
-                        {/* Table Rows */}
-                        {deptBreakdown.map((row: any, i: number) => (
-                            <View key={row.dept} style={[styles.tableRow, i % 2 === 0 && styles.tableRowAlt]}>
-                                <Text style={[styles.tableCell, { width: 120 }]} numberOfLines={1}>{row.dept}</Text>
-                                <Text style={[styles.tableCell, styles.tableCenter, { width: 60, color: '#3B82F6' }]}>{row.NEW}</Text>
-                                <Text style={[styles.tableCell, styles.tableCenter, { width: 75, color: '#F59E0B' }]}>{row.IN_PROGRESS}</Text>
-                                <Text style={[styles.tableCell, styles.tableCenter, { width: 60, color: '#F97316' }]}>{row.ON_HOLD}</Text>
-                                <Text style={[styles.tableCell, styles.tableCenter, { width: 60, color: '#10B981' }]}>{row.DONE}</Text>
-                                <Text style={[styles.tableCell, styles.tableCenter, { width: 65, color: '#EF4444' }]}>{row.CANCEL}</Text>
-                                <Text style={[styles.tableCell, styles.tableCenter, { width: 55, fontWeight: '700' }]}>{row.total}</Text>
-                            </View>
-                        ))}
-                        {/* Totals */}
-                        <View style={styles.tableTotalRow}>
-                            <Text style={[styles.tableCell, { width: 120, fontWeight: '700' }]}>Total</Text>
-                            <Text style={[styles.tableCell, styles.tableCenter, { width: 60, fontWeight: '700', color: '#3B82F6' }]}>{stats.NEW}</Text>
-                            <Text style={[styles.tableCell, styles.tableCenter, { width: 75, fontWeight: '700', color: '#F59E0B' }]}>{stats.IN_PROGRESS}</Text>
-                            <Text style={[styles.tableCell, styles.tableCenter, { width: 60, fontWeight: '700', color: '#F97316' }]}>{stats.ON_HOLD}</Text>
-                            <Text style={[styles.tableCell, styles.tableCenter, { width: 60, fontWeight: '700', color: '#10B981' }]}>{stats.DONE}</Text>
-                            <Text style={[styles.tableCell, styles.tableCenter, { width: 65, fontWeight: '700', color: '#EF4444' }]}>{stats.CANCEL}</Text>
-                            <Text style={[styles.tableCell, styles.tableCenter, { width: 55, fontWeight: '800' }]}>{totalTickets}</Text>
-                        </View>
+            {/* Department by Status Table */}
+            {deptBreakdown.length > 0 && (
+                <View style={styles.section}>
+                    <View style={styles.sectionHeader}>
+                        <Ionicons name="business" size={20} color={Colors.text} />
+                        <Text style={styles.sectionTitle}>Department by Status</Text>
                     </View>
-                </ScrollView>
-            </View>
-
-            {/* Recent Tickets */}
-            <View style={styles.section}>
-                <View style={styles.sectionHeader}>
-                    <Ionicons name="time" size={20} color={Colors.text} />
-                    <Text style={styles.sectionTitle}>Recent Tickets</Text>
-                </View>
-                <View style={styles.card}>
-                    {recentTickets.map((ticket) => {
-                        const statusCfg = STATUS_CONFIG[ticket.status] || STATUS_CONFIG.NEW;
-                        return (
-                            <View key={ticket.id} style={styles.recentItem}>
-                                <View style={styles.recentLeft}>
-                                    <Text style={styles.recentNumber}>{ticket.ticketNumber}</Text>
-                                    <Text style={styles.recentTitle} numberOfLines={1}>{ticket.title}</Text>
-                                    <Text style={styles.recentMeta}>
-                                        {ticket.department} • {new Date(ticket.createdAt).toLocaleDateString()}
-                                    </Text>
-                                </View>
-                                <View style={[styles.recentBadge, { backgroundColor: statusCfg.bgColor }]}>
-                                    <Text style={[styles.recentBadgeText, { color: statusCfg.color }]}>{statusCfg.label}</Text>
-                                </View>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={true} style={styles.tableScroll}>
+                        <View>
+                            {/* Table Header */}
+                            <View style={styles.tableHeader}>
+                                <Text style={[styles.tableHeaderCell, { width: 120 }]}>Department</Text>
+                                <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 60, color: '#3B82F6' }]}>New</Text>
+                                <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 75, color: '#F59E0B' }]}>Process</Text>
+                                <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 60, color: '#F97316' }]}>Hold</Text>
+                                <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 60, color: '#10B981' }]}>Done</Text>
+                                <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 65, color: '#EF4444' }]}>Cancel</Text>
+                                <Text style={[styles.tableHeaderCell, styles.tableCenter, { width: 55, fontWeight: '700' as const }]}>Total</Text>
                             </View>
-                        );
-                    })}
+                            {/* Table Rows */}
+                            {deptBreakdown.map((row, i) => (
+                                <View key={row.department} style={[styles.tableRow, i % 2 === 0 && styles.tableRowAlt]}>
+                                    <Text style={[styles.tableCell, { width: 120 }]} numberOfLines={1}>{row.department}</Text>
+                                    <Text style={[styles.tableCell, styles.tableCenter, { width: 60, color: '#3B82F6' }]}>{row.NEW}</Text>
+                                    <Text style={[styles.tableCell, styles.tableCenter, { width: 75, color: '#F59E0B' }]}>{row.IN_PROGRESS}</Text>
+                                    <Text style={[styles.tableCell, styles.tableCenter, { width: 60, color: '#F97316' }]}>{row.ON_HOLD}</Text>
+                                    <Text style={[styles.tableCell, styles.tableCenter, { width: 60, color: '#10B981' }]}>{row.DONE}</Text>
+                                    <Text style={[styles.tableCell, styles.tableCenter, { width: 65, color: '#EF4444' }]}>{row.CANCEL}</Text>
+                                    <Text style={[styles.tableCell, styles.tableCenter, { width: 55, fontWeight: '700' as const }]}>{row.total}</Text>
+                                </View>
+                            ))}
+                            {/* Totals Row */}
+                            <View style={styles.tableTotalRow}>
+                                <Text style={[styles.tableCell, { width: 120, fontWeight: '700' as const }]}>Total</Text>
+                                <Text style={[styles.tableCell, styles.tableCenter, { width: 60, fontWeight: '700' as const, color: '#3B82F6' }]}>
+                                    {statusCounts.NEW}
+                                </Text>
+                                <Text style={[styles.tableCell, styles.tableCenter, { width: 75, fontWeight: '700' as const, color: '#F59E0B' }]}>
+                                    {statusCounts.IN_PROGRESS}
+                                </Text>
+                                <Text style={[styles.tableCell, styles.tableCenter, { width: 60, fontWeight: '700' as const, color: '#F97316' }]}>
+                                    {statusCounts.ON_HOLD}
+                                </Text>
+                                <Text style={[styles.tableCell, styles.tableCenter, { width: 60, fontWeight: '700' as const, color: '#10B981' }]}>
+                                    {statusCounts.DONE}
+                                </Text>
+                                <Text style={[styles.tableCell, styles.tableCenter, { width: 65, fontWeight: '700' as const, color: '#EF4444' }]}>
+                                    {statusCounts.CANCEL}
+                                </Text>
+                                <Text style={[styles.tableCell, styles.tableCenter, { width: 55, fontWeight: '800' as const }]}>
+                                    {totalTickets}
+                                </Text>
+                            </View>
+                        </View>
+                    </ScrollView>
                 </View>
-            </View>
+            )}
 
             <View style={{ height: 40 }} />
         </ScrollView>
@@ -247,6 +270,10 @@ export default function SummaryScreen({ route }: any) {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },
+    centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: Colors.background, padding: Spacing.xl },
+    loadingText: { marginTop: Spacing.md, fontSize: FontSize.md, color: Colors.textSecondary },
+    errorText: { marginTop: Spacing.md, fontSize: FontSize.md, color: Colors.error, textAlign: 'center' },
+
     typeBanner: {
         flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
         marginHorizontal: Spacing.lg, marginTop: Spacing.lg, marginBottom: Spacing.md,
@@ -276,6 +303,7 @@ const styles = StyleSheet.create({
         marginHorizontal: Spacing.lg, marginBottom: Spacing.sm,
     },
     sectionTitle: { fontSize: FontSize.md, fontWeight: FontWeight.bold, color: Colors.text },
+    sectionSubtitle: { fontSize: FontSize.sm, color: Colors.textSecondary, marginLeft: 'auto' },
     card: {
         backgroundColor: Colors.white, marginHorizontal: Spacing.lg,
         borderRadius: BorderRadius.xl, padding: Spacing.lg,
@@ -320,16 +348,5 @@ const styles = StyleSheet.create({
     tableCenter: { textAlign: 'center' },
     tableTotalRow: { flexDirection: 'row', paddingVertical: Spacing.md, backgroundColor: '#F3F4F6', borderTopWidth: 2, borderTopColor: Colors.border },
 
-    // Recent tickets
-    recentItem: {
-        flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-        paddingVertical: Spacing.md, borderBottomWidth: 1, borderBottomColor: Colors.borderLight,
-    },
-    recentLeft: { flex: 1, marginRight: Spacing.sm },
-    recentNumber: { fontSize: FontSize.xs, fontWeight: FontWeight.bold, color: Colors.primary },
-    recentTitle: { fontSize: FontSize.sm, color: Colors.text, fontWeight: FontWeight.medium, marginTop: 2 },
-    recentMeta: { fontSize: FontSize.xs, color: Colors.textTertiary, marginTop: 2 },
-    recentBadge: { paddingHorizontal: Spacing.sm, paddingVertical: 4, borderRadius: BorderRadius.sm },
-    recentBadgeText: { fontSize: FontSize.xs, fontWeight: FontWeight.semibold },
     emptyText: { textAlign: 'center', color: Colors.textTertiary, paddingVertical: Spacing.xl },
 });

@@ -54,3 +54,26 @@ export interface ApiResponse<T = unknown> {
     error?: string;
     success: boolean;
 }
+
+export interface SummaryStats {
+    totalTickets: number;
+    thisMonthTickets: number;
+    lastMonthTickets: number;
+    yearToDateTickets: number;
+    activeUsers: number;
+    avgResolutionHours: number | null;
+    statusBreakdown: { status: string; count: number }[];
+    typeBreakdown: { type: string; count: number }[];
+    itDepartmentStatusBreakdown?: DepartmentStatusRow[];
+    departmentStatusBreakdown?: DepartmentStatusRow[];
+}
+
+export interface DepartmentStatusRow {
+    department: string;
+    NEW: number;
+    IN_PROGRESS: number;
+    ON_HOLD: number;
+    DONE: number;
+    CANCEL: number;
+    total: number;
+}

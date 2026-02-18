@@ -2,7 +2,7 @@
  * API Service for EGPB Ticket Mobile
  * Uses mock data for testing, easily switchable to real API
  */
-import { ApiResponse, Ticket, TicketStats, User } from '../types';
+import { ApiResponse, Ticket, TicketStats, User, SummaryStats } from '../types';
 import {
     MOCK_USER,
     MOCK_STATS,
@@ -201,20 +201,54 @@ class ApiService {
 
         // Stats
         if (endpoint.startsWith('/stats/summary')) {
+            // Parse type from query: /stats/summary?type=IT or /stats/summary?type=ENGINEER
+            const urlType = endpoint.includes('type=ENGINEER') ? 'ENGINEER' : 'IT';
+            const mockTickets = urlType === 'IT' ? MOCK_IT_TICKETS : MOCK_ENGINEER_TICKETS;
+            const mockStats = urlType === 'IT' ? MOCK_STATS : MOCK_ENGINEER_STATS;
+            const total = Object.values(mockStats).reduce((a, b) => a + b, 0);
+
+            // Build statusBreakdown
+            const statusBreakdown = Object.entries(mockStats).map(([status, count]) => ({
+                status, count,
+            }));
+
+            // Build typeBreakdown from tickets
+            const typeMap: Record<string, number> = {};
+            mockTickets.forEach(t => {
+                const key = t.typeOfDamage || 'Other';
+                typeMap[key] = (typeMap[key] || 0) + 1;
+            });
+            const typeBreakdown = Object.entries(typeMap)
+                .map(([type, count]) => ({ type, count }))
+                .sort((a, b) => b.count - a.count);
+
+            // Build departmentStatusBreakdown from tickets
+            const deptMap: Record<string, Record<string, number>> = {};
+            mockTickets.forEach(t => {
+                const dept = t.department || 'Unknown';
+                if (!deptMap[dept]) deptMap[dept] = { NEW: 0, IN_PROGRESS: 0, ON_HOLD: 0, DONE: 0, CANCEL: 0 };
+                deptMap[dept][t.status] = (deptMap[dept][t.status] || 0) + 1;
+            });
+            const departmentStatusBreakdown = Object.entries(deptMap)
+                .map(([department, statuses]) => ({
+                    department, ...statuses,
+                    total: Object.values(statuses).reduce((sum, c) => sum + c, 0),
+                }))
+                .sort((a: any, b: any) => b.total - a.total);
+
             return {
                 success: true,
                 data: {
-                    totalTickets: 70,
-                    thisMonthTickets: 15,
+                    totalTickets: total,
+                    thisMonthTickets: mockStats.DONE,
+                    lastMonthTickets: Math.floor(mockStats.DONE * 0.8),
+                    yearToDateTickets: total,
                     activeUsers: 25,
                     avgResolutionHours: 4.5,
-                    statusBreakdown: [
-                        { status: 'NEW', count: 13 },
-                        { status: 'IN_PROGRESS', count: 21 },
-                        { status: 'ON_HOLD', count: 5 },
-                        { status: 'DONE', count: 83 },
-                        { status: 'CANCEL', count: 3 },
-                    ],
+                    statusBreakdown,
+                    typeBreakdown,
+                    itDepartmentStatusBreakdown: urlType === 'IT' ? departmentStatusBreakdown : undefined,
+                    departmentStatusBreakdown: urlType === 'ENGINEER' ? departmentStatusBreakdown : undefined,
                 } as T,
             };
         }
@@ -307,6 +341,17 @@ class ApiService {
                 method: 'PATCH',
                 body: JSON.stringify(data),
             });
+        },
+    };
+
+    // ====== Stats ======
+    stats = {
+        summary: async (params?: { type?: string; from?: string; to?: string }) => {
+            const searchParams = new URLSearchParams();
+            if (params?.type) searchParams.append('type', params.type);
+            if (params?.from) searchParams.append('from', params.from);
+            if (params?.to) searchParams.append('to', params.to);
+            return this.request<SummaryStats>(`/stats/summary?${searchParams}`);
         },
     };
 }
