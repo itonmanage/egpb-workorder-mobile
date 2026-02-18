@@ -26,6 +26,7 @@ import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../
 type RootStackParamList = {
     HomeTabs: undefined;
     TicketDetail: { ticketId: string; ticketType: TicketType };
+    CreateTicket: { ticketType: TicketType };
 };
 
 interface StatCardProps {
@@ -210,6 +211,15 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
                 contentContainerStyle={styles.listContent}
                 showsVerticalScrollIndicator={false}
             />
+
+            {/* Floating Action Button */}
+            <TouchableOpacity
+                style={styles.fab}
+                activeOpacity={0.85}
+                onPress={() => navigation.navigate('CreateTicket', { ticketType })}
+            >
+                <Ionicons name="add" size={28} color={Colors.white} />
+            </TouchableOpacity>
         </View>
     );
 }
@@ -378,5 +388,19 @@ const styles = StyleSheet.create({
     },
     listContent: {
         paddingBottom: 100,
+    },
+    fab: {
+        position: 'absolute',
+        bottom: 24,
+        right: 20,
+        width: 56,
+        height: 56,
+        borderRadius: 28,
+        backgroundColor: Colors.primary,
+        justifyContent: 'center',
+        alignItems: 'center',
+        ...Shadow.lg,
+        elevation: 8,
+        zIndex: 100,
     },
 });

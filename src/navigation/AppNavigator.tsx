@@ -21,12 +21,12 @@ export type RootStackParamList = {
     Auth: undefined;
     Main: undefined;
     TicketDetail: { ticketId: string; ticketType: TicketType };
+    CreateTicket: { ticketType: TicketType };
 };
 
 export type MainTabParamList = {
     Engineer: undefined;
     IT: undefined;
-    Create: undefined;
     Profile: undefined;
 };
 
@@ -92,18 +92,7 @@ function MainTabs() {
                     ),
                 }}
             />
-            <Tab.Screen
-                name="Create"
-                component={CreateTicketScreen}
-                options={{
-                    title: 'Create Ticket',
-                    tabBarLabel: 'Create',
-                    tabBarIcon: ({ color, size }) => (
-                        <Ionicons name="add-circle" size={size + 4} color={color} />
-                    ),
-                    headerTintColor: Colors.primary,
-                }}
-            />
+
             <Tab.Screen
                 name="Profile"
                 component={ProfileScreen}
@@ -139,6 +128,18 @@ export default function AppNavigator() {
                         options={{
                             headerShown: true,
                             title: 'Ticket Details',
+                            headerStyle: { backgroundColor: Colors.white },
+                            headerTintColor: Colors.primary,
+                            headerTitleStyle: { fontWeight: FontWeight.bold, color: Colors.text },
+                            headerShadowVisible: false,
+                        }}
+                    />
+                    <Stack.Screen
+                        name="CreateTicket"
+                        component={CreateTicketScreen}
+                        options={{
+                            headerShown: true,
+                            title: 'Create Ticket',
                             headerStyle: { backgroundColor: Colors.white },
                             headerTintColor: Colors.primary,
                             headerTitleStyle: { fontWeight: FontWeight.bold, color: Colors.text },

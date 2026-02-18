@@ -37,9 +37,9 @@ function DropdownPicker({ label, required, value, placeholder, options, visible,
     );
 }
 
-export default function CreateTicketScreen() {
+export default function CreateTicketScreen({ route }: any) {
     const navigation = useNavigation();
-    const [ticketType, setTicketType] = useState<TicketType>('it');
+    const ticketType: TicketType = route?.params?.ticketType || 'engineer';
     const [title, setTitle] = useState('');
     const [description, setDescription] = useState('');
     const [department, setDepartment] = useState('');
@@ -65,16 +65,15 @@ export default function CreateTicketScreen() {
         finally { setLoading(false); }
     };
 
+    const typeLabel = ticketType === 'it' ? 'IT' : 'Engineer';
+    const typeIcon = ticketType === 'it' ? 'desktop' : 'construct';
+
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-            <View style={styles.typeSwitcher}>
-                {(['it', 'engineer'] as TicketType[]).map(t => (
-                    <TouchableOpacity key={t} style={[styles.typeBtn, ticketType === t && styles.typeBtnActive]}
-                        onPress={() => { setTicketType(t); setDamageType(''); setArea(''); }}>
-                        <Ionicons name={t === 'it' ? 'desktop-outline' : 'construct-outline'} size={18} color={ticketType === t ? Colors.white : Colors.primary} />
-                        <Text style={[styles.typeBtnText, ticketType === t && { color: Colors.white }]}>{t === 'it' ? 'IT Ticket' : 'Engineer'}</Text>
-                    </TouchableOpacity>
-                ))}
+            {/* Type indicator banner */}
+            <View style={styles.typeBanner}>
+                <Ionicons name={typeIcon as any} size={20} color={Colors.primary} />
+                <Text style={styles.typeBannerText}>Creating {typeLabel} Ticket</Text>
             </View>
             <View style={styles.formCard}>
                 <View style={styles.field}>
@@ -109,10 +108,8 @@ export default function CreateTicketScreen() {
 
 const styles = StyleSheet.create({
     container: { flex: 1, backgroundColor: Colors.background },
-    typeSwitcher: { flexDirection: 'row', margin: Spacing.lg, backgroundColor: Colors.primaryBg, borderRadius: BorderRadius.lg, padding: 4, gap: 4 },
-    typeBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: Spacing.md, borderRadius: BorderRadius.md },
-    typeBtnActive: { backgroundColor: Colors.primary, ...Shadow.sm },
-    typeBtnText: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.primary },
+    typeBanner: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm, marginHorizontal: Spacing.lg, marginTop: Spacing.lg, marginBottom: Spacing.sm, backgroundColor: Colors.primaryBg, borderRadius: BorderRadius.lg, paddingVertical: Spacing.md, borderWidth: 1, borderColor: Colors.primaryBorder },
+    typeBannerText: { fontSize: FontSize.md, fontWeight: FontWeight.semibold, color: Colors.primary },
     formCard: { backgroundColor: Colors.white, marginHorizontal: Spacing.lg, borderRadius: BorderRadius.xl, padding: Spacing.xl, borderWidth: 1, borderColor: Colors.primaryBorder, ...Shadow.sm },
     field: { marginBottom: Spacing.xl },
     label: { fontSize: FontSize.sm, fontWeight: FontWeight.semibold, color: Colors.text, marginBottom: Spacing.sm },
