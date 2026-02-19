@@ -354,7 +354,7 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
     return (
         <View style={styles.container}>
             {/* Header */}
-            <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
+            <View style={[styles.header, { paddingTop: Math.max(insets.top, 30) + Spacing.sm }]}>
                 <View>
                     <Text style={styles.headerTitle}>{typeLabel} Dashboard</Text>
                     <Text style={styles.headerSubtitle}>

@@ -32,7 +32,7 @@ export default function ProfileScreen() {
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             {/* Profile Header */}
-            <View style={[styles.profileHeader, { paddingTop: insets.top + Spacing.lg }]}>
+            <View style={[styles.profileHeader, { paddingTop: Math.max(insets.top, 30) + Spacing.lg }]}>
                 <View style={styles.avatarContainer}>
                     <View style={styles.avatar}>
                         <Text style={styles.avatarText}>
