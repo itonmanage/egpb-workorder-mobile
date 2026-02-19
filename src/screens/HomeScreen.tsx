@@ -27,6 +27,7 @@ import { LoadingSpinner, EmptyState } from '../components/LoadingAndEmpty';
 import { useAuth } from '../contexts/AuthContext';
 import { getDamageTypes, STATUS_CONFIG } from '../constants';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 type RootStackParamList = {
     HomeTabs: undefined;
@@ -219,6 +220,7 @@ const ITEMS_PER_PAGE = 20;
 export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps) {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { user, isAdmin } = useAuth();
+    const insets = useSafeAreaInsets();
 
     // Data state
     const [tickets, setTickets] = useState<Ticket[]>([]);
@@ -352,7 +354,7 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
     return (
         <View style={styles.container}>
             {/* Header */}
-            <View style={styles.header}>
+            <View style={[styles.header, { paddingTop: insets.top + Spacing.sm }]}>
                 <View>
                     <Text style={styles.headerTitle}>{typeLabel} Dashboard</Text>
                     <Text style={styles.headerSubtitle}>

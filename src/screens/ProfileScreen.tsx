@@ -8,9 +8,11 @@ import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../contexts/AuthContext';
 import { ROLE_LABELS } from '../constants';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../constants/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function ProfileScreen() {
     const { user, isAdmin, logout } = useAuth();
+    const insets = useSafeAreaInsets();
 
     const handleLogout = async () => {
         if (Platform.OS === 'web') {
@@ -30,7 +32,7 @@ export default function ProfileScreen() {
     return (
         <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
             {/* Profile Header */}
-            <View style={styles.profileHeader}>
+            <View style={[styles.profileHeader, { paddingTop: insets.top + Spacing.lg }]}>
                 <View style={styles.avatarContainer}>
                     <View style={styles.avatar}>
                         <Text style={styles.avatarText}>
