@@ -1,26 +1,31 @@
 /**
  * Home Screen - Ticket Dashboard
- * Shows status summary cards and scrollable ticket list
+ * Shows status summary cards, filter bar, and scrollable ticket list
+ * Uses server-side filtering and infinite scroll pagination
  */
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import {
     View,
     Text,
     StyleSheet,
     FlatList,
     RefreshControl,
-    TextInput,
     TouchableOpacity,
+    TextInput,
     ScrollView,
+    ActivityIndicator,
+    Modal,
+    Platform,
 } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { Ionicons } from '@expo/vector-icons';
+import { TicketType, Ticket, TicketStats } from '../types';
 import { apiService } from '../services/api';
-import { Ticket, TicketStats, TicketType } from '../types';
 import { TicketCard } from '../components/TicketCard';
 import { LoadingSpinner, EmptyState } from '../components/LoadingAndEmpty';
 import { useAuth } from '../contexts/AuthContext';
+import { getDamageTypes, STATUS_CONFIG } from '../constants';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../constants/theme';
 
 type RootStackParamList = {
@@ -58,26 +63,223 @@ function StatCard({ title, count, icon, color, bgColor, isActive, onPress }: Sta
     );
 }
 
+// ---- Filter Dropdown Modal ----
+interface FilterModalProps {
+    visible: boolean;
+    title: string;
+    options: readonly string[];
+    selectedValue: string;
+    onSelect: (value: string) => void;
+    onClose: () => void;
+}
+
+function FilterModal({ visible, title, options, selectedValue, onSelect, onClose }: FilterModalProps) {
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <TouchableOpacity style={filterStyles.overlay} activeOpacity={1} onPress={onClose}>
+                <View style={filterStyles.sheet}>
+                    <View style={filterStyles.sheetHandle} />
+                    <Text style={filterStyles.sheetTitle}>{title}</Text>
+                    <ScrollView style={{ maxHeight: 400 }} showsVerticalScrollIndicator={false}>
+                        <TouchableOpacity
+                            style={[filterStyles.option, !selectedValue && filterStyles.optionActive]}
+                            onPress={() => { onSelect(''); onClose(); }}
+                        >
+                            <Text style={[filterStyles.optionText, !selectedValue && filterStyles.optionTextActive]}>All</Text>
+                            {!selectedValue && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+                        </TouchableOpacity>
+                        {options.map((opt) => (
+                            <TouchableOpacity
+                                key={opt}
+                                style={[filterStyles.option, selectedValue === opt && filterStyles.optionActive]}
+                                onPress={() => { onSelect(opt); onClose(); }}
+                            >
+                                <Text style={[filterStyles.optionText, selectedValue === opt && filterStyles.optionTextActive]} numberOfLines={1}>
+                                    {opt}
+                                </Text>
+                                {selectedValue === opt && <Ionicons name="checkmark" size={18} color={Colors.primary} />}
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
+                </View>
+            </TouchableOpacity>
+        </Modal>
+    );
+}
+
+// ---- Date Picker Modal ----
+interface DatePickerModalProps {
+    visible: boolean;
+    startDate: string;
+    endDate: string;
+    onApply: (start: string, end: string) => void;
+    onClose: () => void;
+}
+
+function DatePickerModal({ visible, startDate, endDate, onApply, onClose }: DatePickerModalProps) {
+    const [start, setStart] = useState(startDate);
+    const [end, setEnd] = useState(endDate);
+
+    useEffect(() => {
+        setStart(startDate);
+        setEnd(endDate);
+    }, [startDate, endDate]);
+
+    // Generate quick presets
+    const today = new Date();
+    const formatDate = (d: Date) => d.toISOString().split('T')[0];
+    const presets = [
+        { label: 'Today', start: formatDate(today), end: formatDate(today) },
+        { label: 'Last 7 days', start: formatDate(new Date(today.getTime() - 7 * 86400000)), end: formatDate(today) },
+        { label: 'This Month', start: formatDate(new Date(today.getFullYear(), today.getMonth(), 1)), end: formatDate(today) },
+        { label: 'Last Month', start: formatDate(new Date(today.getFullYear(), today.getMonth() - 1, 1)), end: formatDate(new Date(today.getFullYear(), today.getMonth(), 0)) },
+    ];
+
+    return (
+        <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+            <TouchableOpacity style={filterStyles.overlay} activeOpacity={1} onPress={onClose}>
+                <TouchableOpacity activeOpacity={1} style={filterStyles.sheet}>
+                    <View style={filterStyles.sheetHandle} />
+                    <Text style={filterStyles.sheetTitle}>Date Range</Text>
+
+                    {/* Quick Presets */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+                        {presets.map(p => (
+                            <TouchableOpacity
+                                key={p.label}
+                                style={{
+                                    paddingHorizontal: 12, paddingVertical: 6,
+                                    borderRadius: 16, backgroundColor: start === p.start && end === p.end ? Colors.primary : Colors.primaryBg,
+                                    borderWidth: 1, borderColor: start === p.start && end === p.end ? Colors.primary : Colors.primaryBorder,
+                                }}
+                                onPress={() => { setStart(p.start); setEnd(p.end); }}
+                            >
+                                <Text style={{
+                                    fontSize: 12, fontWeight: '600',
+                                    color: start === p.start && end === p.end ? Colors.white : Colors.primary,
+                                }}>{p.label}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+
+                    {/* Manual Inputs */}
+                    <View style={{ gap: 12 }}>
+                        <View>
+                            <Text style={{ fontSize: 12, color: Colors.textSecondary, marginBottom: 4, fontWeight: '600' }}>Start Date (YYYY-MM-DD)</Text>
+                            <TextInput
+                                style={filterStyles.dateInput}
+                                placeholder="2025-01-01"
+                                placeholderTextColor={Colors.textTertiary}
+                                value={start}
+                                onChangeText={setStart}
+                                keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+                            />
+                        </View>
+                        <View>
+                            <Text style={{ fontSize: 12, color: Colors.textSecondary, marginBottom: 4, fontWeight: '600' }}>End Date (YYYY-MM-DD)</Text>
+                            <TextInput
+                                style={filterStyles.dateInput}
+                                placeholder="2025-12-31"
+                                placeholderTextColor={Colors.textTertiary}
+                                value={end}
+                                onChangeText={setEnd}
+                                keyboardType={Platform.OS === 'ios' ? 'numbers-and-punctuation' : 'default'}
+                            />
+                        </View>
+                    </View>
+
+                    {/* Actions */}
+                    <View style={{ flexDirection: 'row', gap: 12, marginTop: 20 }}>
+                        <TouchableOpacity
+                            style={{ flex: 1, paddingVertical: 12, borderRadius: 12, borderWidth: 1, borderColor: Colors.border, alignItems: 'center' }}
+                            onPress={() => { setStart(''); setEnd(''); onApply('', ''); onClose(); }}
+                        >
+                            <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.textSecondary }}>Clear</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={{ flex: 1, paddingVertical: 12, borderRadius: 12, backgroundColor: Colors.primary, alignItems: 'center' }}
+                            onPress={() => { onApply(start, end); onClose(); }}
+                        >
+                            <Text style={{ fontSize: 14, fontWeight: '600', color: Colors.white }}>Apply</Text>
+                        </TouchableOpacity>
+                    </View>
+                </TouchableOpacity>
+            </TouchableOpacity>
+        </Modal>
+    );
+}
+
+// ==== MAIN SCREEN ====
 interface HomeScreenProps {
     ticketType?: TicketType;
 }
 
+const ITEMS_PER_PAGE = 20;
+
 export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps) {
     const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
     const { user, isAdmin } = useAuth();
+
+    // Data state
     const [tickets, setTickets] = useState<Ticket[]>([]);
     const [stats, setStats] = useState<TicketStats>({ NEW: 0, IN_PROGRESS: 0, ON_HOLD: 0, DONE: 0, CANCEL: 0 });
+    const [totalCount, setTotalCount] = useState(0);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const [hasMore, setHasMore] = useState(true);
+
+    // Filter state
     const [search, setSearch] = useState('');
     const [filterStatus, setFilterStatus] = useState<string>('');
+    const [filterType, setFilterType] = useState<string>('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [myTickets, setMyTickets] = useState(false);
 
-    const fetchData = useCallback(async () => {
+    // Modal state
+    const [showTypeModal, setShowTypeModal] = useState(false);
+    const [showDateModal, setShowDateModal] = useState(false);
+
+    // Debounce timer for search
+    const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const [debouncedSearch, setDebouncedSearch] = useState('');
+
+    // Debounce search input
+    useEffect(() => {
+        if (searchTimer.current) clearTimeout(searchTimer.current);
+        searchTimer.current = setTimeout(() => {
+            setDebouncedSearch(search);
+        }, 400);
+        return () => { if (searchTimer.current) clearTimeout(searchTimer.current); };
+    }, [search]);
+
+    // Build API filters
+    const buildFilters = useCallback((offset: number = 0) => {
+        const filters: Record<string, string | number> = {
+            limit: ITEMS_PER_PAGE,
+            offset,
+        };
+        if (debouncedSearch) filters.search = debouncedSearch;
+        if (filterStatus) filters.status = filterStatus;
+        if (filterType) filters.type = filterType;
+        if (startDate) filters.startDate = startDate;
+        if (endDate) filters.endDate = endDate;
+        if (myTickets) filters.createdByMe = 'true';
+        return filters;
+    }, [debouncedSearch, filterStatus, filterType, startDate, endDate, myTickets]);
+
+    // Fetch tickets (initial / filter change)
+    const fetchTickets = useCallback(async () => {
         try {
+            setLoading(true);
             const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
-            const result = await api.list({ limit: 50 });
+            const result = await api.list(buildFilters(0));
             if (result.success && result.data) {
-                setTickets(result.data.tickets || []);
+                const newTickets = result.data.tickets || [];
+                setTickets(newTickets);
+                setTotalCount(result.data.count || 0);
+                setHasMore(newTickets.length >= ITEMS_PER_PAGE);
                 if (result.data.statusCounts) {
                     setStats(result.data.statusCounts);
                 }
@@ -88,34 +290,65 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
             setLoading(false);
             setRefreshing(false);
         }
+    }, [ticketType, buildFilters]);
+
+    // Fetch more tickets (pagination)
+    const fetchMore = useCallback(async () => {
+        if (loadingMore || !hasMore || loading) return;
+        setLoadingMore(true);
+        try {
+            const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
+            const result = await api.list(buildFilters(tickets.length));
+            if (result.success && result.data) {
+                const moreTickets = result.data.tickets || [];
+                setTickets(prev => [...prev, ...moreTickets]);
+                setHasMore(moreTickets.length >= ITEMS_PER_PAGE);
+            }
+        } catch (error) {
+            console.error('Error loading more tickets:', error);
+        } finally {
+            setLoadingMore(false);
+        }
+    }, [ticketType, buildFilters, tickets.length, loadingMore, hasMore, loading]);
+
+    // Refetch when filters or ticketType change
+    useEffect(() => {
+        fetchTickets();
+    }, [fetchTickets]);
+
+    // Reset filters when tab changes
+    useEffect(() => {
+        setSearch('');
+        setDebouncedSearch('');
+        setFilterStatus('');
+        setFilterType('');
+        setStartDate('');
+        setEndDate('');
+        setMyTickets(false);
     }, [ticketType]);
 
-    useEffect(() => {
-        setLoading(true);
-        fetchData();
-    }, [fetchData]);
+    // Refresh when screen comes into focus
+    useFocusEffect(
+        useCallback(() => {
+            fetchTickets();
+        }, [fetchTickets])
+    );
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
-        fetchData();
-    }, [fetchData]);
-
-    // Filter tickets
-    const filteredTickets = tickets.filter(ticket => {
-        const matchesSearch = !search ||
-            ticket.ticketNumber.toLowerCase().includes(search.toLowerCase()) ||
-            ticket.title?.toLowerCase().includes(search.toLowerCase()) ||
-            ticket.description?.toLowerCase().includes(search.toLowerCase());
-        const matchesStatus = !filterStatus || ticket.status === filterStatus;
-        return matchesSearch && matchesStatus;
-    });
+        fetchTickets();
+    }, [fetchTickets]);
 
     const handleStatPress = (status: string) => {
         setFilterStatus(prev => prev === status ? '' : status);
     };
 
-    const typeLabel = ticketType === 'it' ? 'IT' : 'Engineer';
+    const activeFilterCount = [filterType, startDate || endDate, myTickets].filter(Boolean).length;
 
+    const typeLabel = ticketType === 'it' ? 'IT' : 'Engineer';
+    const damageTypes = getDamageTypes(ticketType);
+
+    // ---- RENDER ----
     return (
         <View style={styles.container}>
             {/* Header */}
@@ -146,7 +379,7 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
             </View>
 
             <FlatList
-                data={filteredTickets}
+                data={tickets}
                 keyExtractor={(item) => item.id}
                 renderItem={({ item }) => (
                     <TicketCard
@@ -156,7 +389,6 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
                 )}
                 ListHeaderComponent={
                     <>
-
                         {/* Stats Cards */}
                         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.statsScroll} contentContainerStyle={styles.statsContainer}>
                             <StatCard title="New" count={stats.NEW} icon="alert-circle" color="#3b82f6" bgColor="#dbeafe" isActive={filterStatus === 'NEW'} onPress={() => handleStatPress('NEW')} />
@@ -183,19 +415,76 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
                                     </TouchableOpacity>
                                 ) : null}
                             </View>
-                            {filterStatus ? (
-                                <TouchableOpacity style={styles.clearFilter} onPress={() => setFilterStatus('')}>
-                                    <Ionicons name="funnel-outline" size={14} color={Colors.error} />
-                                    <Text style={styles.clearFilterText}>Clear</Text>
-                                </TouchableOpacity>
-                            ) : null}
                         </View>
+
+                        {/* Filter Bar */}
+                        <ScrollView
+                            horizontal
+                            showsHorizontalScrollIndicator={false}
+                            style={{ marginTop: Spacing.sm }}
+                            contentContainerStyle={{ paddingHorizontal: Spacing.lg, gap: 8 }}
+                        >
+                            {/* Type Filter */}
+                            <TouchableOpacity
+                                style={[styles.filterChip, filterType ? styles.filterChipActive : null]}
+                                onPress={() => setShowTypeModal(true)}
+                            >
+                                <Ionicons name="pricetag-outline" size={14} color={filterType ? Colors.white : Colors.primary} />
+                                <Text style={[styles.filterChipText, filterType ? styles.filterChipTextActive : null]} numberOfLines={1}>
+                                    {filterType || 'All Types'}
+                                </Text>
+                                <Ionicons name="chevron-down" size={14} color={filterType ? Colors.white : Colors.primary} />
+                            </TouchableOpacity>
+
+                            {/* Date Filter */}
+                            <TouchableOpacity
+                                style={[styles.filterChip, (startDate || endDate) ? styles.filterChipActive : null]}
+                                onPress={() => setShowDateModal(true)}
+                            >
+                                <Ionicons name="calendar-outline" size={14} color={(startDate || endDate) ? Colors.white : Colors.primary} />
+                                <Text style={[styles.filterChipText, (startDate || endDate) ? styles.filterChipTextActive : null]} numberOfLines={1}>
+                                    {startDate && endDate ? `${startDate} → ${endDate}` : startDate || endDate || 'Date Range'}
+                                </Text>
+                                <Ionicons name="chevron-down" size={14} color={(startDate || endDate) ? Colors.white : Colors.primary} />
+                            </TouchableOpacity>
+
+                            {/* My Tickets */}
+                            <TouchableOpacity
+                                style={[styles.filterChip, myTickets ? styles.filterChipActive : null]}
+                                onPress={() => setMyTickets(prev => !prev)}
+                            >
+                                <Ionicons name="person-outline" size={14} color={myTickets ? Colors.white : Colors.primary} />
+                                <Text style={[styles.filterChipText, myTickets ? styles.filterChipTextActive : null]}>
+                                    My Tickets
+                                </Text>
+                            </TouchableOpacity>
+
+                            {/* Clear All Filters */}
+                            {activeFilterCount > 0 && (
+                                <TouchableOpacity
+                                    style={[styles.filterChip, { backgroundColor: Colors.errorBg, borderColor: Colors.errorBorder }]}
+                                    onPress={() => {
+                                        setFilterType('');
+                                        setStartDate('');
+                                        setEndDate('');
+                                        setMyTickets(false);
+                                        setFilterStatus('');
+                                        setSearch('');
+                                    }}
+                                >
+                                    <Ionicons name="close" size={14} color={Colors.error} />
+                                    <Text style={[styles.filterChipText, { color: Colors.error }]}>Clear All</Text>
+                                </TouchableOpacity>
+                            )}
+                        </ScrollView>
 
                         {/* Results count */}
                         <View style={styles.resultsBar}>
                             <Text style={styles.resultsText}>
-                                {filteredTickets.length} ticket{filteredTickets.length !== 1 ? 's' : ''}
-                                {filterStatus ? ` • ${filterStatus.replace('_', ' ')}` : ''}
+                                {tickets.length} of {totalCount} ticket{totalCount !== 1 ? 's' : ''}
+                                {filterStatus ? ` • ${STATUS_CONFIG[filterStatus as keyof typeof STATUS_CONFIG]?.label || filterStatus}` : ''}
+                                {filterType ? ` • ${filterType}` : ''}
+                                {myTickets ? ' • My Tickets' : ''}
                             </Text>
                         </View>
                     </>
@@ -207,10 +496,20 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
                         <EmptyState
                             icon="document-text-outline"
                             title="No tickets found"
-                            message={search || filterStatus ? 'Try adjusting your filters' : 'Create your first ticket!'}
+                            message={search || filterStatus || filterType || startDate ? 'Try adjusting your filters' : 'Create your first ticket!'}
                         />
                     )
                 }
+                ListFooterComponent={
+                    loadingMore ? (
+                        <View style={{ paddingVertical: 20, alignItems: 'center' }}>
+                            <ActivityIndicator size="small" color={Colors.primary} />
+                            <Text style={{ fontSize: 12, color: Colors.textTertiary, marginTop: 4 }}>Loading more...</Text>
+                        </View>
+                    ) : null
+                }
+                onEndReached={fetchMore}
+                onEndReachedThreshold={0.3}
                 refreshControl={
                     <RefreshControl
                         refreshing={refreshing}
@@ -231,9 +530,28 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
             >
                 <Ionicons name="add" size={28} color={Colors.white} />
             </TouchableOpacity>
+
+            {/* Filter Modals */}
+            <FilterModal
+                visible={showTypeModal}
+                title="Type of Damage"
+                options={damageTypes}
+                selectedValue={filterType}
+                onSelect={setFilterType}
+                onClose={() => setShowTypeModal(false)}
+            />
+            <DatePickerModal
+                visible={showDateModal}
+                startDate={startDate}
+                endDate={endDate}
+                onApply={(s, e) => { setStartDate(s); setEndDate(e); }}
+                onClose={() => setShowDateModal(false)}
+            />
         </View>
     );
 }
+
+// ==== STYLES ====
 
 const styles = StyleSheet.create({
     container: {
@@ -294,36 +612,6 @@ const styles = StyleSheet.create({
         fontSize: FontSize.xs,
         fontWeight: FontWeight.semibold,
         color: Colors.primary,
-    },
-    typeSwitcher: {
-        flexDirection: 'row',
-        marginHorizontal: Spacing.lg,
-        marginTop: Spacing.lg,
-        backgroundColor: Colors.primaryBg,
-        borderRadius: BorderRadius.lg,
-        padding: 4,
-        gap: 4,
-    },
-    typeButton: {
-        flex: 1,
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 6,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.md,
-    },
-    typeButtonActive: {
-        backgroundColor: Colors.primary,
-        ...Shadow.sm,
-    },
-    typeButtonText: {
-        fontSize: FontSize.sm,
-        fontWeight: FontWeight.semibold,
-        color: Colors.primary,
-    },
-    typeButtonTextActive: {
-        color: Colors.white,
     },
     statsScroll: {
         marginTop: Spacing.lg,
@@ -388,21 +676,30 @@ const styles = StyleSheet.create({
         fontSize: FontSize.sm,
         color: Colors.text,
     },
-    clearFilter: {
+    // Filter Chips
+    filterChip: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 4,
-        backgroundColor: Colors.errorBg,
-        paddingHorizontal: Spacing.md,
-        paddingVertical: Spacing.md,
-        borderRadius: BorderRadius.lg,
+        paddingHorizontal: 12,
+        paddingVertical: 8,
+        borderRadius: 20,
+        backgroundColor: Colors.primaryBg,
         borderWidth: 1,
-        borderColor: Colors.errorBorder,
+        borderColor: Colors.primaryBorder,
     },
-    clearFilterText: {
-        fontSize: FontSize.xs,
-        fontWeight: FontWeight.medium,
-        color: Colors.error,
+    filterChipActive: {
+        backgroundColor: Colors.primary,
+        borderColor: Colors.primary,
+    },
+    filterChipText: {
+        fontSize: 12,
+        fontWeight: '600' as const,
+        color: Colors.primary,
+        maxWidth: 150,
+    },
+    filterChipTextActive: {
+        color: Colors.white,
     },
     resultsBar: {
         paddingHorizontal: Spacing.lg,
@@ -429,5 +726,67 @@ const styles = StyleSheet.create({
         ...Shadow.lg,
         elevation: 8,
         zIndex: 100,
+    },
+});
+
+const filterStyles = StyleSheet.create({
+    overlay: {
+        flex: 1,
+        backgroundColor: 'rgba(0,0,0,0.4)',
+        justifyContent: 'flex-end',
+    },
+    sheet: {
+        backgroundColor: Colors.white,
+        borderTopLeftRadius: 24,
+        borderTopRightRadius: 24,
+        paddingHorizontal: 20,
+        paddingBottom: 32,
+        paddingTop: 12,
+        maxHeight: '70%',
+    },
+    sheetHandle: {
+        width: 40,
+        height: 4,
+        borderRadius: 2,
+        backgroundColor: Colors.border,
+        alignSelf: 'center',
+        marginBottom: 16,
+    },
+    sheetTitle: {
+        fontSize: 18,
+        fontWeight: '700' as const,
+        color: Colors.text,
+        marginBottom: 16,
+    },
+    option: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        borderRadius: 12,
+        marginBottom: 2,
+    },
+    optionActive: {
+        backgroundColor: Colors.primaryBg,
+    },
+    optionText: {
+        fontSize: 15,
+        color: Colors.text,
+        flex: 1,
+    },
+    optionTextActive: {
+        fontWeight: '600' as const,
+        color: Colors.primary,
+    },
+    dateInput: {
+        borderWidth: 1,
+        borderColor: Colors.border,
+        borderRadius: 12,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        fontSize: 15,
+        color: Colors.text,
+        backgroundColor: Colors.background,
     },
 });
