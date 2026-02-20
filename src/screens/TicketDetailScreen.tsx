@@ -14,11 +14,13 @@ import {
     TextInput,
     Platform,
     ActivityIndicator,
+    Image,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { useRoute, useNavigation, RouteProp } from '@react-navigation/native';
 import { apiService } from '../services/api';
-import { Ticket, TicketType } from '../types';
+import { Ticket, TicketType, TicketImage } from '../types';
 import { StatusBadge } from '../components/StatusBadge';
 import { LoadingSpinner } from '../components/LoadingAndEmpty';
 import { useAuth } from '../contexts/AuthContext';
@@ -76,6 +78,12 @@ export default function TicketDetailScreen() {
     const [saving, setSaving] = useState(false);
     const [showInfoPicker, setShowInfoPicker] = useState(false);
 
+    // Image states
+    const [userImages, setUserImages] = useState<TicketImage[]>([]);
+    const [adminCompletionImages, setAdminCompletionImages] = useState<TicketImage[]>([]);
+    const [selectedAdminImages, setSelectedAdminImages] = useState<ImagePicker.ImagePickerAsset[]>([]);
+    const [uploadingImages, setUploadingImages] = useState(false);
+
     useEffect(() => {
         const fetchTicket = async () => {
             try {
@@ -88,6 +96,11 @@ export default function TicketDetailScreen() {
                     setAdminNotes(ticketData.adminNotes || '');
                     setAssignTo(ticketData.assignTo || '');
                     setInformationBy(ticketData.informationBy || '');
+
+                    if (ticketData.images) {
+                        setUserImages(ticketData.images.filter(img => !img.isCompletion && !img.is_completion_image));
+                        setAdminCompletionImages(ticketData.images.filter(img => img.isCompletion || img.is_completion_image));
+                    }
                 }
             } catch (error) {
                 console.error('Error fetching ticket:', error);
@@ -97,6 +110,68 @@ export default function TicketDetailScreen() {
         };
         fetchTicket();
     }, [ticketId, ticketType]);
+
+    const pickImages = async () => {
+        try {
+            const result = await ImagePicker.launchImageLibraryAsync({
+                mediaTypes: ['images'],
+                allowsMultipleSelection: true,
+                quality: 0.8,
+            });
+
+            if (!result.canceled && result.assets) {
+                setSelectedAdminImages(prev => [...prev, ...result.assets]);
+            }
+        } catch (error) {
+            console.error('Error picking images:', error);
+            if (Platform.OS !== 'web') {
+                Alert.alert('Error', 'Failed to pick images');
+            }
+        }
+    };
+
+    const removeSelectedImage = (index: number) => {
+        setSelectedAdminImages(prev => prev.filter((_, i) => i !== index));
+    };
+
+    const handleUploadImages = async () => {
+        if (!ticket || selectedAdminImages.length === 0) return;
+        setUploadingImages(true);
+        try {
+            const api = ticketType === 'it' ? apiService.tickets : apiService.engineerTickets;
+            const uris = selectedAdminImages.map(asset => {
+                const uri = asset.uri;
+                const fileName = asset.fileName || uri.split('/').pop() || 'image.jpg';
+                const type = asset.mimeType || 'image/jpeg';
+                return { uri, name: fileName, type };
+            });
+
+            const result = await api.uploadImages(ticket.id, uris, true);
+            if (result.success) {
+                if (Platform.OS === 'web') alert('Images uploaded successfully!');
+                else Alert.alert('Success', 'Images uploaded successfully!');
+                setSelectedAdminImages([]);
+
+                const refreshResult = await api.get(ticket.id);
+                if (refreshResult.success && refreshResult.data) {
+                    const t = (refreshResult.data as { ticket: Ticket }).ticket || refreshResult.data;
+                    if (t.images) {
+                        setUserImages(t.images.filter(img => !img.isCompletion && !img.is_completion_image));
+                        setAdminCompletionImages(t.images.filter(img => img.isCompletion || img.is_completion_image));
+                    }
+                }
+            } else {
+                if (Platform.OS === 'web') alert(`Upload failed: ${result.error}`);
+                else Alert.alert('Error', `Upload failed: ${result.error}`);
+            }
+        } catch (error) {
+            console.error('Error uploading:', error);
+            if (Platform.OS === 'web') alert('Upload failed');
+            else Alert.alert('Error', 'Upload failed');
+        } finally {
+            setUploadingImages(false);
+        }
+    };
 
     const handleStatusChange = async (newStatus: string) => {
         if (!ticket) return;
@@ -248,6 +323,23 @@ export default function TicketDetailScreen() {
                     </Text>
                 </View>
             </View>
+
+            {/* User Attached Images */}
+            {userImages.length > 0 && (
+                <View style={styles.section}>
+                    <Text style={styles.sectionTitle}>
+                        <Ionicons name="images-outline" size={16} color={Colors.primary} /> Attached Images
+                    </Text>
+                    <View style={styles.imageGrid}>
+                        {userImages.map((img, idx) => (
+                            <View key={'user-' + (img.id || idx)} style={styles.imageContainer}>
+                                <Image source={{ uri: img.imageUrl || img.image_url }} style={styles.imagePreview} />
+                                <Text style={styles.imageName} numberOfLines={1}>{img.imageName || img.image_url?.split('/').pop() || 'Image'}</Text>
+                            </View>
+                        ))}
+                    </View>
+                </View>
+            )}
 
             {/* Details */}
             <View style={styles.section}>
@@ -407,6 +499,57 @@ export default function TicketDetailScreen() {
                         <Text style={styles.lastUpdated}>
                             Last updated: {new Date(ticket.updatedAt).toLocaleString()}
                         </Text>
+                    )}
+
+                    {/* Admin Image Pick/Upload Section */}
+                    {isAdmin && (
+                        <View style={styles.imageUploadSection}>
+                            <Text style={styles.adminFieldLabel}>
+                                <Ionicons name="images-outline" size={14} color={Colors.primary} /> Upload Completion Images
+                            </Text>
+                            <TouchableOpacity style={styles.uploadBtn} onPress={pickImages} activeOpacity={0.7}>
+                                <Ionicons name="cloud-upload-outline" size={18} color={Colors.white} />
+                                <Text style={styles.uploadBtnText}>Select Images</Text>
+                            </TouchableOpacity>
+
+                            {selectedAdminImages.length > 0 && (
+                                <View style={styles.selectedImagesContainer}>
+                                    <Text style={[styles.adminFieldLabel, { marginTop: Spacing.md }]}>Selected ({selectedAdminImages.length})</Text>
+                                    <View style={styles.imageGrid}>
+                                        {selectedAdminImages.map((asset, index) => (
+                                            <View key={'sel-' + index} style={styles.imageContainer}>
+                                                <Image source={{ uri: asset.uri }} style={styles.imagePreview} />
+                                                <TouchableOpacity style={styles.removeImageBtn} onPress={() => removeSelectedImage(index)}>
+                                                    <Ionicons name="close" size={14} color={Colors.white} />
+                                                </TouchableOpacity>
+                                                <Text style={styles.imageName} numberOfLines={1}>{asset.fileName || 'Image'}</Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                    <TouchableOpacity style={[styles.saveButton, { marginTop: Spacing.md }, uploadingImages && styles.saveButtonDisabled]} onPress={handleUploadImages} disabled={uploadingImages}>
+                                        {uploadingImages ? <ActivityIndicator size="small" color={Colors.white} /> : <Ionicons name="cloud-upload" size={18} color={Colors.white} />}
+                                        <Text style={styles.saveButtonText}>{uploadingImages ? 'Uploading...' : 'Upload Images'}</Text>
+                                    </TouchableOpacity>
+                                </View>
+                            )}
+                        </View>
+                    )}
+
+                    {/* Admin Completion Images View */}
+                    {adminCompletionImages.length > 0 && (
+                        <View style={styles.completionImagesSection}>
+                            <Text style={[styles.adminFieldLabel, { marginTop: Spacing.md }]}>
+                                <Ionicons name="images" size={14} color={Colors.primary} /> Completion Images
+                            </Text>
+                            <View style={styles.imageGrid}>
+                                {adminCompletionImages.map((img, idx) => (
+                                    <View key={'admin-' + (img.id || idx)} style={styles.imageContainer}>
+                                        <Image source={{ uri: img.imageUrl || img.image_url }} style={styles.imagePreview} />
+                                        <Text style={styles.imageName} numberOfLines={1}>{img.imageName || img.image_url?.split('/').pop() || 'Image'}</Text>
+                                    </View>
+                                ))}
+                            </View>
+                        </View>
                     )}
                 </View>
             </View>
@@ -705,5 +848,75 @@ const styles = StyleSheet.create({
     notFoundText: {
         fontSize: FontSize.lg,
         color: Colors.textSecondary,
+    },
+    imageGrid: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: Spacing.md,
+        marginTop: Spacing.sm,
+    },
+    imageContainer: {
+        width: '30%',
+        aspectRatio: 1,
+        position: 'relative',
+        borderRadius: BorderRadius.md,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderColor: Colors.borderLight,
+        backgroundColor: Colors.background,
+    },
+    imagePreview: {
+        width: '100%',
+        height: '100%',
+        resizeMode: 'cover',
+    },
+    removeImageBtn: {
+        position: 'absolute',
+        top: 4,
+        right: 4,
+        backgroundColor: Colors.error,
+        borderRadius: BorderRadius.full,
+        padding: 4,
+    },
+    imageName: {
+        position: 'absolute',
+        bottom: 0,
+        left: 0,
+        right: 0,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        color: Colors.white,
+        fontSize: 10,
+        paddingHorizontal: 4,
+        paddingVertical: 2,
+    },
+    imageUploadSection: {
+        marginTop: Spacing.lg,
+        borderTopWidth: 1,
+        borderTopColor: Colors.borderLight,
+        paddingTop: Spacing.lg,
+    },
+    uploadBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: Spacing.sm,
+        backgroundColor: Colors.textSecondary,
+        borderRadius: BorderRadius.lg,
+        paddingVertical: Spacing.md,
+        marginTop: Spacing.sm,
+    },
+    uploadBtnText: {
+        color: Colors.white,
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.medium,
+    },
+    selectedImagesContainer: {
+        marginTop: Spacing.md,
+    },
+    completionImagesSection: {
+        marginTop: Spacing.lg,
+        borderTopWidth: 1,
+        borderTopColor: Colors.borderLight,
+        paddingTop: Spacing.lg,
     },
 });

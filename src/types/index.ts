@@ -7,6 +7,10 @@ export interface TicketImage {
     id: string;
     imageUrl?: string;
     image_url?: string;
+    imageName?: string;
+    image_name?: string;
+    isCompletion?: boolean;
+    is_completion_image?: boolean;
 }
 
 export interface Ticket {

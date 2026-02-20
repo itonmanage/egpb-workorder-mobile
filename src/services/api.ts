@@ -307,6 +307,42 @@ class ApiService {
                 body: JSON.stringify(data),
             });
         },
+
+        uploadImages: async (id: string, uris: { uri: string; name: string; type: string }[], isAdminUpload: boolean = false) => {
+            if (USE_MOCK) return { success: true, data: { imageUrls: ['mock-url'] } };
+
+            try {
+                const formData = new FormData();
+                uris.forEach(file => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formData.append('file', {
+                        uri: file.uri,
+                        name: file.name,
+                        type: file.type || 'image/jpeg',
+                    } as any);
+                });
+                formData.append('ticketId', id);
+                formData.append('isAdminUpload', String(isAdminUpload));
+
+                const headers: Record<string, string> = {};
+                if (apiService['token']) {
+                    headers['Authorization'] = `Bearer ${apiService['token']}`;
+                }
+
+                const response = await fetch(`${API_BASE_URL}/api/upload`, {
+                    method: 'POST',
+                    headers,
+                    body: formData,
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Upload failed');
+                }
+                return { success: true, imageUrls: result.data?.images?.map((i: any) => i.url) || [] };
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+            }
+        },
     };
 
     // ====== Engineer Tickets ======
@@ -341,6 +377,43 @@ class ApiService {
                 method: 'PATCH',
                 body: JSON.stringify(data),
             });
+        },
+
+        uploadImages: async (id: string, uris: { uri: string; name: string; type: string }[], isAdminUpload: boolean = false) => {
+            if (USE_MOCK) return { success: true, data: { imageUrls: ['mock-url'] } };
+
+            try {
+                const formData = new FormData();
+                uris.forEach(file => {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    formData.append('file', {
+                        uri: file.uri,
+                        name: file.name,
+                        type: file.type || 'image/jpeg',
+                    } as any);
+                });
+                formData.append('ticketId', id);
+                formData.append('isAdminUpload', String(isAdminUpload));
+                formData.append('type', 'engineer');
+
+                const headers: Record<string, string> = {};
+                if (apiService['token']) {
+                    headers['Authorization'] = `Bearer ${apiService['token']}`;
+                }
+
+                const response = await fetch(`${API_BASE_URL}/api/upload`, {
+                    method: 'POST',
+                    headers,
+                    body: formData,
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || 'Upload failed');
+                }
+                return { success: true, imageUrls: result.data?.images?.map((i: any) => i.url) || [] };
+            } catch (error) {
+                return { success: false, error: error instanceof Error ? error.message : 'Network error' };
+            }
         },
     };
 
