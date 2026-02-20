@@ -6,6 +6,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef, ReactNode } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as SecureStore from 'expo-secure-store';
 import { apiService } from '../services/api';
 import { User } from '../types';
 
@@ -38,6 +39,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const isAuthenticated = !!user;
     const isAdmin = user?.role === 'ADMIN' || user?.role === 'IT_ADMIN' || user?.role === 'ENGINEER_ADMIN';
 
+    // ---- Setup Global 401 Interceptor ----
+    useEffect(() => {
+        apiService.setOnUnauthorized(() => {
+            console.log('401 Unauthorized received, logging out globally...');
+            clearStoredAuth().then(() => {
+                apiService.setToken(null);
+                setUser(null);
+            });
+        });
+    }, []);
+
     // ---- Update last active timestamp ----
     const updateLastActive = useCallback(async () => {
         try {
@@ -63,8 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // ---- Clear all stored auth data ----
     const clearStoredAuth = useCallback(async () => {
         try {
+            await SecureStore.deleteItemAsync(STORAGE_KEYS.TOKEN);
             await AsyncStorage.multiRemove([
-                STORAGE_KEYS.TOKEN,
                 STORAGE_KEYS.USER,
                 STORAGE_KEYS.LAST_ACTIVE,
             ]);
@@ -89,7 +101,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 }
 
                 // Try to restore saved token
-                const savedToken = await AsyncStorage.getItem(STORAGE_KEYS.TOKEN);
+                const savedToken = await SecureStore.getItemAsync(STORAGE_KEYS.TOKEN);
                 if (savedToken) {
                     apiService.setToken(savedToken);
 
@@ -160,8 +172,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 apiService.setToken(token);
                 setUser(userData);
 
-                // Persist to AsyncStorage
-                await AsyncStorage.setItem(STORAGE_KEYS.TOKEN, token);
+                // Persist to Storage
+                await SecureStore.setItemAsync(STORAGE_KEYS.TOKEN, token);
                 await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(userData));
                 await updateLastActive();
 

@@ -20,9 +20,14 @@ const USE_MOCK = false;
 
 class ApiService {
     private token: string | null = null;
+    private onUnauthorizedCallback: (() => void) | null = null;
 
     setToken(token: string | null) {
         this.token = token;
+    }
+
+    setOnUnauthorized(callback: () => void) {
+        this.onUnauthorizedCallback = callback;
     }
 
     private async request<T>(
@@ -59,6 +64,9 @@ class ApiService {
             const data = await response.json();
 
             if (!response.ok) {
+                if (response.status === 401) {
+                    this.onUnauthorizedCallback?.();
+                }
                 return {
                     success: false,
                     error: data.error || 'An error occurred',
