@@ -8,7 +8,7 @@ import React, { useState } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TextInput,
     TouchableOpacity, Alert, ActivityIndicator, Image,
-    FlatList, Platform,
+    FlatList,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -114,22 +114,7 @@ export default function CreateTicketScreen({ route }: any) {
         }
     };
 
-    // Show image source picker
-    const handleAddImage = () => {
-        if (images.length >= 10) {
-            Alert.alert('Limit Reached', 'Maximum 10 images allowed.');
-            return;
-        }
-        if (Platform.OS === 'web') {
-            pickFromGallery();
-            return;
-        }
-        Alert.alert('Attach Image', 'Choose a source', [
-            { text: 'Camera', onPress: pickFromCamera },
-            { text: 'Photo Library', onPress: pickFromGallery },
-            { text: 'Cancel', style: 'cancel' },
-        ]);
-    };
+    const isImageLimitReached = images.length >= 10;
 
     // Remove image
     const removeImage = (index: number) => {
@@ -241,14 +226,44 @@ export default function CreateTicketScreen({ route }: any) {
                         </View>
                     )}
 
-                    {/* Add image button */}
-                    {images.length < 10 && (
-                        <TouchableOpacity style={styles.addImageBtn} onPress={handleAddImage} activeOpacity={0.7}>
-                            <Ionicons name="camera-outline" size={24} color={Colors.primary} />
-                            <Text style={styles.addImageText}>
-                                {images.length === 0 ? 'Tap to attach images' : 'Add more images'}
+                    {/* Camera / Gallery buttons */}
+                    <View style={styles.imageButtonRow}>
+                        <TouchableOpacity
+                            style={[styles.imageSourceBtn, styles.cameraBtn, isImageLimitReached && styles.imageSourceBtnDisabled]}
+                            onPress={pickFromCamera}
+                            disabled={isImageLimitReached}
+                            activeOpacity={0.75}
+                        >
+                            <View style={styles.imageSourceIcon}>
+                                <Ionicons name="camera" size={26} color={isImageLimitReached ? Colors.textTertiary : Colors.white} />
+                            </View>
+                            <Text style={[styles.imageSourceLabel, isImageLimitReached && { color: Colors.textTertiary }]}>
+                                Camera
+                            </Text>
+                            <Text style={[styles.imageSourceSub, isImageLimitReached && { color: Colors.textTertiary }]}>
+                                ถ่ายรูปใหม่
                             </Text>
                         </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.imageSourceBtn, styles.galleryBtn, isImageLimitReached && styles.imageSourceBtnDisabled]}
+                            onPress={pickFromGallery}
+                            disabled={isImageLimitReached}
+                            activeOpacity={0.75}
+                        >
+                            <View style={[styles.imageSourceIcon, { backgroundColor: Colors.primaryBg }]}>
+                                <Ionicons name="images" size={26} color={isImageLimitReached ? Colors.textTertiary : Colors.primary} />
+                            </View>
+                            <Text style={[styles.imageSourceLabel, { color: isImageLimitReached ? Colors.textTertiary : Colors.primary }]}>
+                                Gallery
+                            </Text>
+                            <Text style={[styles.imageSourceSub, { color: isImageLimitReached ? Colors.textTertiary : Colors.textSecondary }]}>
+                                เลือกจากคลัง
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                    {isImageLimitReached && (
+                        <Text style={styles.limitText}>ครบจำนวนสูงสุด 10 รูปแล้ว</Text>
                     )}
                 </View>
 
@@ -329,13 +344,57 @@ const styles = StyleSheet.create({
     removeImageBtn: {
         position: 'absolute', top: -6, right: -6, backgroundColor: Colors.white, borderRadius: 12,
     },
-    addImageBtn: {
-        flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.sm,
-        borderWidth: 2, borderColor: Colors.primaryBorder, borderStyle: 'dashed',
-        borderRadius: BorderRadius.md, paddingVertical: Spacing.xl, backgroundColor: Colors.primaryBg,
+    imageButtonRow: {
+        flexDirection: 'row',
+        gap: Spacing.md,
     },
-    addImageText: {
-        fontSize: FontSize.sm, fontWeight: FontWeight.medium, color: Colors.primary,
+    imageSourceBtn: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: Spacing.xl,
+        borderRadius: BorderRadius.lg,
+        gap: 6,
+        ...Shadow.sm,
+    },
+    imageSourceBtnDisabled: {
+        backgroundColor: Colors.background,
+        borderWidth: 1,
+        borderColor: Colors.border,
+        shadowOpacity: 0,
+        elevation: 0,
+    },
+    cameraBtn: {
+        backgroundColor: Colors.primary,
+    },
+    galleryBtn: {
+        backgroundColor: Colors.white,
+        borderWidth: 2,
+        borderColor: Colors.primaryBorder,
+    },
+    imageSourceIcon: {
+        width: 48,
+        height: 48,
+        borderRadius: 24,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 2,
+    },
+    imageSourceLabel: {
+        fontSize: FontSize.md,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+    },
+    imageSourceSub: {
+        fontSize: FontSize.xs,
+        color: 'rgba(255,255,255,0.8)',
+    },
+    limitText: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        textAlign: 'center',
+        marginTop: Spacing.sm,
     },
     // Action buttons
     actions: { flexDirection: 'row', gap: Spacing.md, marginTop: Spacing.sm },
