@@ -111,22 +111,39 @@ export default function TicketDetailScreen() {
         fetchTicket();
     }, [ticketId, ticketType]);
 
-    const pickImages = async () => {
+    const pickFromCamera = async () => {
         try {
+            const { status } = await ImagePicker.requestCameraPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Required', 'Please allow camera access to take photos.');
+                return;
+            }
+            const result = await ImagePicker.launchCameraAsync({ quality: 0.6 });
+            if (!result.canceled && result.assets[0]) {
+                setSelectedAdminImages(prev => [...prev, result.assets[0]]);
+            }
+        } catch {
+            Alert.alert('Error', 'Failed to open camera');
+        }
+    };
+
+    const pickFromGallery = async () => {
+        try {
+            const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+            if (status !== 'granted') {
+                Alert.alert('Permission Required', 'Please allow access to your photo library.');
+                return;
+            }
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
                 allowsMultipleSelection: true,
                 quality: 0.6,
             });
-
             if (!result.canceled && result.assets) {
                 setSelectedAdminImages(prev => [...prev, ...result.assets]);
             }
-        } catch (error) {
-            console.error('Error picking images:', error);
-            if (Platform.OS !== 'web') {
-                Alert.alert('Error', 'Failed to pick images');
-            }
+        } catch {
+            Alert.alert('Error', 'Failed to pick images');
         }
     };
 
@@ -507,10 +524,32 @@ export default function TicketDetailScreen() {
                             <Text style={styles.adminFieldLabel}>
                                 <Ionicons name="images-outline" size={14} color={Colors.primary} /> Upload Completion Images
                             </Text>
-                            <TouchableOpacity style={styles.uploadBtn} onPress={pickImages} activeOpacity={0.7}>
-                                <Ionicons name="cloud-upload-outline" size={18} color={Colors.white} />
-                                <Text style={styles.uploadBtnText}>Select Images</Text>
-                            </TouchableOpacity>
+                            <Text style={styles.uploadHint}>{selectedAdminImages.length} รูปที่เลือก • กดปุ่มด้านล่างเพื่อเพิ่มรูป</Text>
+                            <View style={styles.uploadButtonRow}>
+                                <TouchableOpacity
+                                    style={styles.uploadCameraBtn}
+                                    onPress={pickFromCamera}
+                                    activeOpacity={0.75}
+                                >
+                                    <View style={styles.uploadBtnIcon}>
+                                        <Ionicons name="camera" size={24} color={Colors.white} />
+                                    </View>
+                                    <Text style={styles.uploadBtnLabel}>Camera</Text>
+                                    <Text style={styles.uploadBtnSub}>ถ่ายรูปใหม่</Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={styles.uploadGalleryBtn}
+                                    onPress={pickFromGallery}
+                                    activeOpacity={0.75}
+                                >
+                                    <View style={[styles.uploadBtnIcon, { backgroundColor: Colors.primaryBg }]}>
+                                        <Ionicons name="images" size={24} color={Colors.primary} />
+                                    </View>
+                                    <Text style={[styles.uploadBtnLabel, { color: Colors.primary }]}>Gallery</Text>
+                                    <Text style={styles.uploadBtnSub}>เลือกจากคลัง</Text>
+                                </TouchableOpacity>
+                            </View>
 
                             {selectedAdminImages.length > 0 && (
                                 <View style={styles.selectedImagesContainer}>
@@ -895,20 +934,55 @@ const styles = StyleSheet.create({
         borderTopColor: Colors.borderLight,
         paddingTop: Spacing.lg,
     },
-    uploadBtn: {
+    uploadHint: {
+        fontSize: FontSize.xs,
+        color: Colors.textTertiary,
+        marginBottom: Spacing.md,
+    },
+    uploadButtonRow: {
         flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: Spacing.sm,
-        backgroundColor: Colors.textSecondary,
-        borderRadius: BorderRadius.lg,
-        paddingVertical: Spacing.md,
+        gap: Spacing.md,
         marginTop: Spacing.sm,
     },
-    uploadBtnText: {
-        color: Colors.white,
+    uploadCameraBtn: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: Spacing.xl,
+        borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.primary,
+        gap: 6,
+        ...Shadow.sm,
+    },
+    uploadGalleryBtn: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        paddingVertical: Spacing.xl,
+        borderRadius: BorderRadius.lg,
+        backgroundColor: Colors.white,
+        borderWidth: 2,
+        borderColor: Colors.primaryBorder,
+        gap: 6,
+        ...Shadow.sm,
+    },
+    uploadBtnIcon: {
+        width: 44,
+        height: 44,
+        borderRadius: 22,
+        backgroundColor: 'rgba(255,255,255,0.2)',
+        justifyContent: 'center',
+        alignItems: 'center',
+        marginBottom: 2,
+    },
+    uploadBtnLabel: {
         fontSize: FontSize.md,
-        fontWeight: FontWeight.medium,
+        fontWeight: FontWeight.bold,
+        color: Colors.white,
+    },
+    uploadBtnSub: {
+        fontSize: FontSize.xs,
+        color: 'rgba(255,255,255,0.8)',
     },
     selectedImagesContainer: {
         marginTop: Spacing.md,
