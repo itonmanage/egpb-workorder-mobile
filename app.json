@@ -14,22 +14,60 @@
         },
         "ios": {
             "supportsTablet": true,
-            "bundleIdentifier": "com.egpb.ticket"
+            "bundleIdentifier": "com.egpb.ticket",
+            "buildNumber": "1",
+            "infoPlist": {
+                "NSCameraUsageDescription": "EGPB Ticket ต้องการเข้าถึงกล้องเพื่อถ่ายรูปแนบกับ work order",
+                "NSPhotoLibraryUsageDescription": "EGPB Ticket ต้องการเข้าถึงคลังรูปภาพเพื่อแนบรูปกับ work order",
+                "NSPhotoLibraryAddUsageDescription": "EGPB Ticket ต้องการบันทึกรูปภาพลงในคลัง",
+                "ITSAppUsesNonExemptEncryption": false
+            }
         },
         "android": {
             "adaptiveIcon": {
                 "foregroundImage": "./assets/adaptive-icon.png",
                 "backgroundColor": "#16a34a"
             },
-            "package": "com.egpb.ticket"
+            "package": "com.egpb.ticket",
+            "versionCode": 1,
+            "permissions": [
+                "android.permission.CAMERA",
+                "android.permission.READ_MEDIA_IMAGES",
+                "android.permission.READ_EXTERNAL_STORAGE",
+                "android.permission.WRITE_EXTERNAL_STORAGE",
+                "android.permission.INTERNET",
+                "android.permission.ACCESS_NETWORK_STATE"
+            ]
         },
         "web": {
             "favicon": "./assets/favicon.png",
             "bundler": "metro"
         },
         "scheme": "egpb-ticket",
+        "updates": {
+            "url": "https://u.expo.dev/your-eas-project-id-here",
+            "fallbackToCacheTimeout": 0,
+            "checkAutomatically": "ON_LOAD"
+        },
+        "runtimeVersion": {
+            "policy": "appVersion"
+        },
         "plugins": [
-            "expo-secure-store"
-        ]
+            "expo-secure-store",
+            "expo-updates",
+            [
+                "expo-image-picker",
+                {
+                    "photosPermission": "EGPB Ticket ต้องการเข้าถึงคลังรูปภาพเพื่อแนบรูปกับ work order",
+                    "cameraPermission": "EGPB Ticket ต้องการเข้าถึงกล้องเพื่อถ่ายรูปแนบกับ work order"
+                }
+            ]
+        ],
+        "extra": {
+            "privacyPolicyUrl": "https://egpb.com/privacy-policy",
+            "eas": {
+                "projectId": "your-eas-project-id-here"
+            }
+        }
     }
 }

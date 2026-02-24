@@ -42,7 +42,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // ---- Setup Global 401 Interceptor ----
     useEffect(() => {
         apiService.setOnUnauthorized(() => {
-            console.log('401 Unauthorized received, logging out globally...');
             clearStoredAuth().then(() => {
                 apiService.setToken(null);
                 setUser(null);
@@ -92,7 +91,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 // Check if session expired
                 const expired = await isSessionExpired();
                 if (expired) {
-                    console.log('Session expired (inactive > 2 days), logging out...');
                     await clearStoredAuth();
                     apiService.setToken(null);
                     setUser(null);
@@ -113,8 +111,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                         await AsyncStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(result.data.user));
                         await updateLastActive();
                     } else {
-                        // Token invalid, clear everything
-                        console.log('Stored token invalid, clearing session...');
                         await clearStoredAuth();
                         apiService.setToken(null);
                     }
@@ -139,7 +135,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 if (user) {
                     const expired = await isSessionExpired();
                     if (expired) {
-                        console.log('Session expired on resume, logging out...');
                         await clearStoredAuth();
                         apiService.setToken(null);
                         setUser(null);

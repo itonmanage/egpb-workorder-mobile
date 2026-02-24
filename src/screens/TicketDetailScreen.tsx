@@ -116,7 +116,7 @@ export default function TicketDetailScreen() {
             const result = await ImagePicker.launchImageLibraryAsync({
                 mediaTypes: ['images'],
                 allowsMultipleSelection: true,
-                quality: 0.8,
+                quality: 0.6,
             });
 
             if (!result.canceled && result.assets) {

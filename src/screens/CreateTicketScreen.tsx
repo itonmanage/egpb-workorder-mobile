@@ -83,7 +83,7 @@ export default function CreateTicketScreen({ route }: any) {
         const result = await ImagePicker.launchImageLibraryAsync({
             mediaTypes: ['images'],
             allowsMultipleSelection: true,
-            quality: 0.7,
+            quality: 0.6,
             selectionLimit: 10 - images.length,
         });
         if (!result.canceled && result.assets) {
@@ -103,7 +103,7 @@ export default function CreateTicketScreen({ route }: any) {
             return;
         }
         const result = await ImagePicker.launchCameraAsync({
-            quality: 0.7,
+            quality: 0.6,
         });
         if (!result.canceled && result.assets[0]) {
             const asset = result.assets[0];
@@ -183,7 +183,7 @@ export default function CreateTicketScreen({ route }: any) {
                 {/* Title */}
                 <View style={styles.field}>
                     <Text style={styles.label}>Location / Title <Text style={styles.req}>*</Text></Text>
-                    <TextInput style={styles.input} value={title} onChangeText={setTitle} placeholder="e.g., Room 301 - WiFi Issue" placeholderTextColor={Colors.textTertiary} />
+                    <TextInput style={styles.input} value={title} onChangeText={(t) => setTitle(t.slice(0, 200))} placeholder="e.g., Room 301 - WiFi Issue" placeholderTextColor={Colors.textTertiary} maxLength={200} />
                 </View>
 
                 {/* Description */}
@@ -191,12 +191,15 @@ export default function CreateTicketScreen({ route }: any) {
                     <Text style={styles.label}>Description <Text style={styles.req}>*</Text></Text>
                     <TextInput
                         style={[styles.input, { minHeight: 100, textAlignVertical: 'top' }]}
-                        value={description} onChangeText={setDescription}
+                        value={description} onChangeText={(t) => setDescription(t.slice(0, 2000))}
                         placeholder="Describe the issue..."
                         placeholderTextColor={Colors.textTertiary}
                         multiline numberOfLines={4}
+                        maxLength={2000}
                     />
-                    <Text style={styles.charCount}>{description.length}/2000</Text>
+                    <Text style={[styles.charCount, description.length >= 1900 && { color: Colors.error }]}>
+                        {description.length}/2000
+                    </Text>
                 </View>
 
                 {/* Dropdowns */}

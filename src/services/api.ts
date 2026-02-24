@@ -12,11 +12,14 @@ import {
     simulateDelay,
 } from './mockData';
 
-// Set this to your server URL when ready to connect
+// Internal network API endpoint — update to HTTPS when TLS is available on the server
 const API_BASE_URL = 'http://10.70.2.241:3000/egpb/pyt/workorder';
 
 // Toggle this to switch between mock and real API
 const USE_MOCK = false;
+
+// Network request timeout (10 seconds)
+const REQUEST_TIMEOUT_MS = 10000;
 
 class ApiService {
     private token: string | null = null;
@@ -48,10 +51,16 @@ class ApiService {
                 headers['Authorization'] = `Bearer ${this.token}`;
             }
 
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
             const response = await fetch(`${API_BASE_URL}/api${endpoint}`, {
                 ...options,
                 headers,
+                signal: controller.signal,
             });
+
+            clearTimeout(timeoutId);
 
             const contentType = response.headers.get('content-type');
             if (!contentType || !contentType.includes('application/json')) {
@@ -78,6 +87,9 @@ class ApiService {
                 data: data.data || data,
             };
         } catch (error) {
+            if (error instanceof Error && error.name === 'AbortError') {
+                return { success: false, error: 'Request timed out. Please check your connection.' };
+            }
             return {
                 success: false,
                 error: error instanceof Error ? error.message : 'Network error',

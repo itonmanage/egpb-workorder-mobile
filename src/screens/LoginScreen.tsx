@@ -141,13 +141,6 @@ export default function LoginScreen() {
                         )}
                     </TouchableOpacity>
 
-                    {/* Demo hint */}
-                    <View style={styles.demoHint}>
-                        <Ionicons name="information-circle-outline" size={14} color={Colors.info} />
-                        <Text style={styles.demoHintText}>
-                            Demo: Enter any username & password
-                        </Text>
-                    </View>
                 </View>
 
                 {/* Footer */}
@@ -304,20 +297,6 @@ const styles = StyleSheet.create({
         fontSize: FontSize.md,
         fontWeight: FontWeight.semibold,
         color: Colors.white,
-    },
-    demoHint: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 4,
-        marginTop: Spacing.lg,
-        paddingTop: Spacing.md,
-        borderTopWidth: 1,
-        borderTopColor: Colors.borderLight,
-    },
-    demoHintText: {
-        fontSize: FontSize.xs,
-        color: Colors.info,
     },
     footer: {
         fontSize: FontSize.xs,

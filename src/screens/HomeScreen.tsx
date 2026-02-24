@@ -23,7 +23,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { TicketType, Ticket, TicketStats } from '../types';
 import { apiService } from '../services/api';
 import { TicketCard } from '../components/TicketCard';
-import { LoadingSpinner, EmptyState } from '../components/LoadingAndEmpty';
+import { EmptyState } from '../components/LoadingAndEmpty';
+import { TicketCardSkeleton } from '../components/SkeletonLoader';
 import { useAuth } from '../contexts/AuthContext';
 import { getDamageTypes, STATUS_CONFIG } from '../constants';
 import { Colors, Spacing, FontSize, FontWeight, BorderRadius, Shadow } from '../constants/theme';
@@ -493,7 +494,9 @@ export default function HomeScreen({ ticketType = 'engineer' }: HomeScreenProps)
                 }
                 ListEmptyComponent={
                     loading ? (
-                        <LoadingSpinner message="Loading tickets..." />
+                        <View style={{ paddingTop: Spacing.md }}>
+                            {[1, 2, 3, 4, 5].map((key) => <TicketCardSkeleton key={key} />)}
+                        </View>
                     ) : (
                         <EmptyState
                             icon="document-text-outline"
