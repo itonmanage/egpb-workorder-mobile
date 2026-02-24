@@ -44,17 +44,8 @@
             "bundler": "metro"
         },
         "scheme": "egpb-ticket",
-        "updates": {
-            "url": "https://u.expo.dev/your-eas-project-id-here",
-            "fallbackToCacheTimeout": 0,
-            "checkAutomatically": "ON_LOAD"
-        },
-        "runtimeVersion": {
-            "policy": "appVersion"
-        },
         "plugins": [
             "expo-secure-store",
-            "expo-updates",
             [
                 "expo-image-picker",
                 {
