@@ -1,10 +1,10 @@
-# EGPB Ticket — Google Play Store Listing
+# Eastin Work Order — Google Play Store Listing
 
 ---
 
 ## App Title (ชื่อ App)
 ```
-EGPB Ticket
+Eastin Work Order
 ```
 > ความยาว: 10 ตัวอักษร (สูงสุด 30)
 
@@ -28,7 +28,7 @@ Manage IT & Engineering repair tickets, track status, and attach photos anywhere
 
 ### ภาษาไทย
 ```
-EGPB Ticket — ระบบจัดการคำขอซ่อมบำรุงบนมือถือ สำหรับทีม IT และวิศวกรรม
+Eastin Work Order — ระบบจัดการคำขอซ่อมบำรุงบนมือถือ สำหรับทีม IT และวิศวกรรม
 
 สร้าง ติดตาม และจัดการ Ticket งานซ่อมได้ทุกที่ทุกเวลา ด้วยระบบที่ออกแบบมาสำหรับองค์กรโดยเฉพาะ รองรับ 2 ประเภทงาน คือ งาน IT และงานวิศวกรรม
 
@@ -66,7 +66,7 @@ EGPB Ticket — ระบบจัดการคำขอซ่อมบำร�
 
 ### ภาษาอังกฤษ
 ```
-EGPB Ticket — Mobile Work Order Management for IT & Engineering Teams
+Eastin Work Order — Mobile Work Order Management for IT & Engineering Teams
 
 Create, track, and manage repair tickets anytime, anywhere. Designed specifically for organizations with two ticket types: IT Support and Engineering Maintenance.
 

@@ -1,4 +1,4 @@
-# EGPB Ticket — Google Play Store Assets
+# Eastin Work Order — Google Play Store Assets
 
 โฟลเดอร์นี้รวบรวมทุกอย่างที่ต้องใช้สำหรับ submit แอปขึ้น Google Play Store
 
@@ -35,7 +35,7 @@ store-assets/
 ### ขั้นตอนที่ 2 — สร้าง App ใน Play Console
 - [ ] ไปที่ [play.google.com/console](https://play.google.com/console)
 - [ ] กด "Create app"
-- [ ] กรอก App name: `EGPB Ticket`
+- [ ] กรอก App name: `Eastin Work Order`
 - [ ] เลือก Default language: Thai (ภาษาไทย)
 - [ ] App type: App
 - [ ] Free or paid: Free
@@ -71,7 +71,7 @@ store-assets/
 
 | รายการ | ค่า |
 |---|---|
-| App Name | EGPB Ticket |
+| App Name | Eastin Work Order |
 | Package Name | com.egpb.ticket |
 | Version | 1.0.0 |
 | Category | Business |
